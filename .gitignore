@@ -16,3 +16,6 @@ node_modules/
 secret.json
 .env
 .env.*
+
+# Keep the empty template, ignore only real secrets
+!app/data.example/secret.json
