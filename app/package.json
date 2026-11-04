@@ -1,0 +1,11 @@
+{
+  "name": "companion",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "单人 AI 伴侣 — V0（零依赖）",
+  "scripts": {
+    "start": "node server.mjs",
+    "smoke": "node smoke.mjs"
+  }
+}

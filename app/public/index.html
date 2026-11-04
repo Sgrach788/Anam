@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0d10" media="(prefers-color-scheme: dark)" />
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Companion" />
+<meta name="description" content="只属于我的 AI 伴侣" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="stylesheet" href="/style.css" />
+<script>
+// 更新 Service Worker 后立即重载当前页面，避免新版 HTML 搭配旧缓存的 CSS/JS。
+(() => {
+  if (!('serviceWorker' in navigator)) return;
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  let reloadStarted = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloadStarted) return;
+    reloadStarted = true;
+    location.reload();
+  });
+  window.addEventListener('load', async () => {
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
+      await registration.update();
+    } catch { /* 页面仍可在线打开；下次导航继续检查更新 */ }
+  }, { once: true });
+})();
+</script>
+<title>Companion</title>
+</head>
+<body>
+  <div id="app">
+    <section id="inboxView" class="app-page inbox-page">
+      <header class="home-header">
+        <button id="userProfileOpen" class="home-identity" type="button" aria-label="本机资料">
+          <span class="avatar" id="userAvatar">我</span><span class="who"><b id="userName">我</b><small>本机 · 私密</small></span>
+        </button>
+        <button id="addAiPreview" class="icon-btn add-ai" type="button" aria-label="添加 AI">＋</button>
+      </header>
+      <div class="inbox-content">
+        <label class="inbox-search"><span aria-hidden="true">⌕</span><input id="conversationSearch" type="search" placeholder="搜索" /></label>
+        <div class="conversation-list">
+          <h2>消息</h2>
+          <button id="conversationCard" class="conversation-card" type="button" aria-label="打开 Anam 对话">
+            <span class="avatar" id="inboxAiAvatar">✳</span><span class="conversation-copy"><b id="inboxAiName">Anam</b><small id="inboxPreview">还没有消息</small></span><time id="inboxTime"></time>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section id="chatView" class="app-page chat-page" hidden>
+      <header class="chat-header">
+        <button id="chatBack" class="icon-btn nav-back" type="button" aria-label="返回对话列表">‹</button>
+        <div class="avatar" id="headerAvatar">✳</div>
+        <div class="who">
+          <b id="appName">Anam</b>
+          <span class="chat-status"><i class="dot" id="statusDot"></i><em id="statusText">连接中…</em><em id="budgetText" hidden></em><small id="aiSignature" class="ai-signature"></small></span>
+        </div>
+        <button id="aiProfileOpen" class="icon-btn hamburger" type="button" aria-label="AI 资料">☰</button>
+      </header>
+      <button id="loadOlder" class="load-older" type="button" hidden>加载更早</button>
+      <main id="list" role="log" aria-live="polite">
+      <div id="skeleton" aria-hidden="true">
+        <div class="sk w80"></div>
+        <div class="sk w60"></div>
+        <div class="sk w72"></div>
+      </div>
+      </main>
+
+    <form id="composer">
+      <textarea id="input" rows="1" placeholder="说点什么…" autocomplete="off" enterkeyhint="send"></textarea>
+      <button id="send" type="submit" aria-label="发送">↑</button>
+      </form>
+    </section>
+
+    <section id="contactsView" class="app-page contacts-page" hidden>
+      <header class="page-title"><b>AI 联系人</b></header>
+      <button id="contactAnam" class="conversation-card" type="button"><span class="avatar contact-avatar">✳</span><span class="conversation-copy"><b class="contact-name">Anam</b><small class="contact-signature">还没有签名</small></span><span class="row-btn-action">›</span></button>
+    </section>
+
+    <section id="aiProfileView" class="app-page profile-page" hidden>
+      <header class="page-title"><button id="aiProfileBack" class="icon-btn" type="button" aria-label="返回">‹</button><b>AI 资料</b><span></span></header>
+      <div class="profile-content"><div class="profile-hero"><div class="avatar profile-avatar" id="profileAiAvatar">✳</div><h2 id="profileAiName">Anam</h2><p id="profileAiSignature">还没有签名</p></div>
+        <section class="profile-info"><h3>整体人设</h3><p id="infoPersona">尚未设置</p></section>
+        <section class="profile-info"><h3>语气</h3><p id="infoTone">尚未设置</p></section>
+        <section class="profile-info"><h3>主动性</h3><p id="infoInitiative">尚未设置</p></section>
+        <section class="profile-info"><h3>边界</h3><p id="infoBoundaries">尚未设置</p></section>
+        <section class="profile-info meme-entry-block">
+          <button id="memeEntry" class="meme-entry" type="button">
+            <span><b>表情包</b><small id="memeEntryCounts">共 0 张 · 已启用 0 张</small></span>
+            <span class="row-btn-action">›</span>
+          </button>
+          <label class="meme-toggle"><span>允许她发表情</span><input id="memeEnabledToggle" type="checkbox" /></label>
+        </section>
+        <button id="personaEdit" class="profile-edit" type="button">编辑个性</button>
+      </div>
+    </section>
+
+    <section id="userProfileView" class="app-page profile-page" hidden>
+      <header class="page-title"><button id="userProfileBack" class="icon-btn" type="button" aria-label="返回">‹</button><b>本机资料</b><span></span></header>
+      <div class="profile-content user-profile-content"><div class="profile-hero"><div class="avatar profile-avatar" id="userAvatarPreview">我</div><label class="upload-btn">更换头像<input id="userAvatarFile" type="file" accept="image/*" hidden /></label></div>
+        <label class="field">昵称<input id="userNameInput" maxlength="40" placeholder="我" /></label>
+        <button id="userProfileSave" class="profile-edit" type="button">保存资料</button>
+      </div>
+    </section>
+
+    <section id="spaceView" class="space-view" hidden>
+      <div class="space-heading">
+        <div><b>我们的空间</b><small>留下一些值得记住的片刻</small></div>
+        <button id="spacePostToggle" class="compact" type="button">写动态</button>
+      </div>
+      <section class="emotion-panel">
+        <div class="emotion-heading"><b>她最近的状态</b><span id="spaceSignature" class="space-signature"></span></div>
+        <div id="emotionChart" class="emotion-chart" role="img" aria-label="AI 愉悦度和活跃度变化"></div>
+        <div class="emotion-legend"><span><i class="pleasure-dot"></i>愉悦度</span><span><i class="energy-dot"></i>活跃度</span><small id="emotionCaption">状态会随时间慢慢变化</small></div>
+      </section>
+      <form id="spaceComposer" class="space-composer" hidden>
+        <textarea id="spaceInput" rows="3" maxlength="1200" placeholder="写下这一刻……"></textarea>
+        <div><button id="spaceCancel" class="ghost" type="button">取消</button><button type="submit">发布</button></div>
+      </form>
+      <div id="spacePosts" class="space-posts"></div>
+      <div id="spaceEmpty" class="space-empty" hidden>这里还很安静。想写下什么，或等她留下第一条动态。</div>
+    </section>
+  </div>
+
+  <div id="consolePanel" hidden>
+    <div class="console-box" role="dialog" aria-modal="true" aria-labelledby="consoleTitle">
+      <div class="console-head">
+        <button id="consoleClose" class="page-back icon-btn" type="button" aria-label="返回设置">
+          <span id="consoleCloseIcon" class="nav-icon">×</span>
+        </button>
+        <div><b id="consoleTitle">控制台</b><small>服务状态、API 与功能预览</small></div>
+        <span class="console-head-spacer" aria-hidden="true"></span>
+      </div>
+
+      <div class="console-content">
+      <section class="console-section">
+        <div class="section-title"><b>DeepSeek API</b><span id="apiModeBadge" class="status-badge">读取中</span></div>
+        <div class="metric-row"><span>当前模型</span><b id="apiModel">—</b></div>
+        <div class="metric-row"><span>API Key</span><b id="apiKeyState">—</b></div>
+        <label class="field">输入新的 API Key
+          <input id="apiKeyInput" type="password" autocomplete="new-password" placeholder="已配置时留空表示不修改" />
+        </label>
+        <div class="control-actions">
+          <button id="apiSaveBtn" type="button">保存 Key</button>
+          <button id="apiClearBtn" class="ghost" type="button">清除</button>
+          <button id="apiTestBtn" class="ghost" type="button">测试模型</button>
+        </div>
+        <div id="apiSettingsMsg" class="side-msg" role="status">Key 只保存在电脑服务端，不会回显到网页。</div>
+      </section>
+
+      <section class="console-section">
+        <div class="section-title"><b>DeepSeek 账户余额</b><button id="balanceRefresh" class="ghost compact" type="button">刷新</button></div>
+        <div id="balanceValue" class="balance-value">尚未查询</div>
+        <div id="balanceStatus" class="side-msg" role="status">余额属于 API 提供方账户，与 APP 本地用量分开。</div>
+      </section>
+
+      <section class="console-section">
+        <div class="section-title"><b>本地用量</b><span id="usageDay" class="muted">今天</span></div>
+        <div class="metric-grid">
+          <div class="metric-card"><small>今日花费</small><b id="usageSpend">—</b></div>
+          <div class="metric-card"><small>Token</small><b id="usageTokens">—</b></div>
+          <div class="metric-card"><small>模型调用</small><b id="usageCalls">—</b></div>
+          <div class="metric-card"><small>每日上限</small><b id="usageLimit">—</b></div>
+        </div>
+        <div class="usage-track"><i id="usageBar"></i></div>
+        <div id="usageNote" class="side-msg">根据模型返回的 token 用量记账；缺少用量时会标记估算。</div>
+        <button id="budgetResetBtn" class="ghost compact" type="button" hidden>恢复今日限额</button>
+      </section>
+
+      <section class="console-section memory-console">
+        <div class="section-title"><b>长期记忆</b><span id="memoryStats" class="muted">读取中…</span></div>
+        <p class="muted">每 20 轮自动整理一次；点下方按钮整页阅读摘要，详细管理收在折叠项里。</p>
+        <div id="memoryGraph" class="memory-graph" role="img" aria-label="有来源依据的记忆关联图"></div>
+        <button id="summaryOpenBtn" class="ghost compact" type="button">查看对话摘要</button>
+        <details id="memoryTools" class="memory-tools">
+          <summary>记忆管理 · 搜索 / 编辑 / 语义检索</summary>
+          <div class="embedding-settings">
+            <b>语义检索（可选）</b>
+            <label class="field">Embedding API 地址<input id="embeddingBaseInput" type="url" placeholder="https://example.com/v1" /></label>
+            <label class="field">模型<input id="embeddingModelInput" type="text" maxlength="128" placeholder="例如 BAAI/bge-m3" /></label>
+            <label class="field">API Key<input id="embeddingKeyInput" type="password" autocomplete="new-password" placeholder="已配置时留空表示不修改" /></label>
+            <label class="field">单价（元 / 百万 Token）<input id="embeddingPriceInput" type="number" min="0" step="0.01" placeholder="免费服务填 0" /></label>
+            <div class="control-actions">
+              <button id="embeddingSaveBtn" type="button">保存检索设置</button>
+              <button id="embeddingClearBtn" class="ghost" type="button">清除 Key</button>
+              <button id="embeddingTestBtn" class="ghost" type="button">测试连接</button>
+            </div>
+            <div id="embeddingMsg" class="side-msg">不配置也能使用本地关键词检索。Key 只保存在 PC 服务端。</div>
+            <button id="memoryIndexBtn" class="ghost compact" type="button">建立 / 更新语义索引</button>
+            <button id="memorySummarizeBtn" class="ghost compact" type="button">立即整理记忆</button>
+          </div>
+          <form id="memorySearchForm" class="memory-search">
+            <input id="memorySearchInput" type="search" placeholder="搜索记忆……" />
+            <button type="submit">搜索</button>
+          </form>
+          <div id="memoryResults" class="memory-results"></div>
+        </details>
+      </section>
+
+      <section class="console-section meme-console" id="memeSection">
+        <div class="section-title"><b>表情包</b><span id="memeCounts" class="muted">读取中…</span></div>
+        <p class="muted" id="memeState">总开关：读取中…</p>
+        <div class="meme-upload">
+          <label class="upload-btn">上传表情<input id="memeFile" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden /></label>
+          <span id="memeMsg" class="side-msg"></span>
+        </div>
+        <div id="memeGrid" class="meme-grid"></div>
+        <div id="memeEmpty" class="muted" hidden>还没有表情包。先上传几张，再填名称、审核和启用。</div>
+      </section>
+
+      <section class="console-section">
+        <div class="section-title"><b>后续版本</b><span class="muted">规划中</span></div>
+        <div class="preview-grid">
+          <button id="previewV2" class="preview-card" type="button" disabled><b>表情包库</b><small>V2 · 库已开放，发送 Phase 2</small></button>
+          <button id="previewV3" class="preview-card" type="button" disabled><b>主动对话</b><small>V3 · 会想你</small></button>
+          <button id="previewV4" class="preview-card" type="button" disabled><b>多 AI 协作</b><small>V4+ · 之后规划</small></button>
+        </div>
+      </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- 个性编辑面板：分板块，按优先级分配大小 -->
+  <div id="personaPanel" hidden>
+    <div class="panel-box" role="dialog" aria-modal="true" aria-labelledby="panelTitle">
+      <div class="panel-head">
+        <button id="panelClose" class="page-back icon-btn" type="button" aria-label="返回设置">
+          <span id="panelCloseIcon" class="nav-icon">×</span>
+        </button>
+        <b id="panelTitle">个性修改</b>
+        <span class="panel-head-spacer" aria-hidden="true"></span>
+      </div>
+      <div id="profileScroll" class="profile-scroll">
+        <div id="profilePageBasics">
+          <div id="profileBasics" class="profile-basics">
+            <div class="field">头像
+              <div class="avatar-row">
+                <div class="avatar preview-avatar" id="avatarPreview">✳</div>
+                <label class="upload-btn">选图片<input id="pAvatarFile" type="file" accept="image/*" hidden /></label>
+                <button id="avatarClear" class="ghost small" type="button">清除</button>
+              </div>
+            </div>
+            <label class="field">名称<input id="pAiName" type="text" maxlength="40" placeholder="Anam" /></label>
+            <label class="field">对我的称呼<input id="pCallUser" type="text" maxlength="40" placeholder="例如 阿哲" /></label>
+            <label class="field">个性签名<input id="pSignature" type="text" maxlength="56" placeholder="她此刻的自我表达（可留空）" /></label>
+          </div>
+        </div>
+      <div class="panel-grid">
+        <label class="pane wide">
+          <span>整体人设 <em>它是谁、怎么说话</em></span>
+          <textarea id="ppPersona" rows="5" placeholder="一段话描述它的性格、说话方式、和你的关系"></textarea>
+        </label>
+        <label class="pane">
+          <span>语气 <em>怎么说</em></span>
+          <textarea id="ppTone" rows="4" placeholder="例如：温柔、少用感叹号、偶尔损我一句"></textarea>
+        </label>
+        <label class="pane">
+          <span>主动性 <em>多主动</em></span>
+          <textarea id="ppInitiative" rows="4" placeholder="例如：多问我今天怎么样，但别每句都追问"></textarea>
+        </label>
+        <label class="pane wide short">
+          <span>边界 <em>不做什么</em></span>
+          <textarea id="ppBoundaries" rows="3" placeholder="例如：不替我做决定、不主动提钱和前任"></textarea>
+        </label>
+      </div>
+      <ol id="previewList" class="preview"></ol>
+      <div id="panelMsg" class="side-msg"></div>
+      </div>
+      <div class="panel-actions">
+        <button id="previewBtn" class="ghost" type="button">试说三句</button>
+        <button id="panelCancel" class="ghost" type="button">取消</button>
+        <button id="panelDone" type="button">保存</button>
+      </div>
+      <div id="discardConfirm" class="discard-confirm" hidden>
+        <section class="discard-card" role="alertdialog" aria-modal="true" aria-labelledby="discardTitle">
+          <b id="discardTitle">放弃未保存的修改？</b>
+          <p>当前更改还没有保存，离开后会丢失。</p>
+          <div class="discard-actions">
+            <button id="discardKeep" class="ghost" type="button">继续编辑</button>
+            <button id="discardApply" type="button">放弃修改</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- 对话摘要：从控制台「长期记忆」打开，整页阅读 -->
+  <div id="summaryPanel" hidden>
+    <div class="summary-box">
+      <div class="summary-head">
+        <button id="summaryBack" class="page-back icon-btn" type="button" aria-label="返回控制台">‹</button>
+        <div><b>对话摘要</b><small>她记住的阶段</small></div>
+        <span class="summary-spacer" aria-hidden="true"></span>
+      </div>
+      <div id="summaryList" class="summary-list"></div>
+    </div>
+  </div>
+
+  <!-- 额度用完时的选择：今天继续后不再拦截，明天 0 点恢复 -->
+  <div id="budgetDialog" hidden>
+    <div class="budget-box" role="dialog" aria-modal="true" aria-labelledby="budgetTitle">
+      <b id="budgetTitle">今日额度已用完</b>
+      <p id="budgetDialogText"></p>
+      <div class="budget-actions">
+        <button id="budgetCancel" class="ghost" type="button">算了</button>
+        <button id="budgetContinue" type="button">今天继续</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="memeDeleteDialog" hidden>
+    <div class="budget-box" role="dialog" aria-modal="true" aria-labelledby="memeDeleteTitle">
+      <b id="memeDeleteTitle">删除这张表情？</b>
+      <p id="memeDeleteText"></p>
+      <div class="budget-actions">
+        <button id="memeDeleteCancel" class="ghost" type="button">取消</button>
+        <button id="memeDeleteConfirm" type="button">删除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 切换栏固定在布局视口底部：键盘弹起时被盖住，不跟着上升 -->
+  <nav id="tabs" aria-label="主导航">
+    <button id="tabChat" class="tab active" type="button"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v11H9l-5 3v-14Z"/><path d="M8 10h8M8 13.5h5"/></svg><span>对话</span></button>
+    <button id="tabContacts" class="tab" type="button"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.3"/><path d="M5.5 20c.5-3.4 2.7-5.2 6.5-5.2s6 1.8 6.5 5.2"/></svg><span>AI 联系人</span></button>
+    <button id="tabSpace" class="tab" type="button"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 14 9l5.5 2-5.5 2-2 5.5-2-5.5-5.5-2L10 9l2-5.5Z"/><path d="m19 16 .9 2.1L22 19l-2.1.9L19 22l-.9-2.1L16 19l2.1-.9L19 16Z"/></svg><span>空间</span></button>
+    <button id="tabConsole" class="tab" type="button"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg><span>控制台</span></button>
+  </nav>
+
+  <div id="lock">
+    <div class="lock-box">
+      <div class="avatar lock-avatar">✳</div>
+      <h2>输入访问口令</h2>
+      <p>这台设备第一次打开需要它，之后会记住。</p>
+      <input id="lockInput" type="password" autocomplete="current-password" placeholder="口令" />
+      <button id="lockBtn" type="button">进入</button>
+      <div id="lockErr"></div>
+    </div>
+  </div>
+
+  <div id="toast" role="status"></div>
+
+  <!-- 长按消息后出现，点它才复制（iOS 要求复制发生在手势里） -->
+  <div id="copybar" hidden>
+    <button id="copyBtn" type="button">复制</button>
+  </div>
+
+  <script type="module" src="/ui.js"></script>
+</body>
+</html>

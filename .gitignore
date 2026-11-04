@@ -1,0 +1,18 @@
+﻿# Private runtime data (never commit)
+app/data/
+backups/
+.runtime/
+.publish-tools/
+
+# Local artifacts / logs
+.tmp-*
+.acl-recovery/
+*.log
+*.bak
+*.tmp
+node_modules/
+
+# Secrets
+secret.json
+.env
+.env.*

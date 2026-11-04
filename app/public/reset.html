@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>清理旧缓存</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0f12; color: #e8eaed; }
+  body { display: grid; place-items: center; font: 16px/1.6 -apple-system, "PingFang SC", sans-serif; }
+  p { opacity: .8; }
+</style>
+</head>
+<body>
+<p>正在清理旧缓存…</p>
+<script>
+(async () => {
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map((r) => r.unregister()));
+  } catch (e) { /* ignore */ }
+  try {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+  } catch (e) { /* ignore */ }
+  location.replace('/');
+})();
+</script>
+</body>
+</html>
