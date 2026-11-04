@@ -1,9 +1,18 @@
-﻿# Companion — 使用说明
+# Companion — 使用说明
 
 > 只属于你的私密 AI 伴侣。决策以 `DECISIONS.md` 为准；`roadmap.md` 是历史，不要照着做。
 > 当前版本：V1「有过去」已完成（2026-11-03）；V2「表情包」Phase 1（库/审核/取图/备份）与 Phase 2A（AI 选图发送）已完成；Phase 2B（你手动发表情/图片）待批准。插件能力按原生功能分阶段转化，不连接 AstrBot 或 QQ。
 
 ---
+
+## 0. 新克隆
+
+1. 安装 Node.js；
+2. 新建 `app\data\`，把 `app\data.example\secret.json` 复制为 `app\data\secret.json`；
+3. 在 `secret.json` 填 API key / 访问口令；不填 key 就是 mock 模式；
+4. 双击 `app\start.cmd`，或运行 `run.ps1`。
+
+`app\data\`、`backups\`、`.runtime\` 都不在仓库里，克隆后是空的。
 
 ## 1. 启动方式
 
