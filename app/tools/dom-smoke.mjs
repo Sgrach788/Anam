@@ -10,6 +10,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 8907;
 const BASE = `http://127.0.0.1:${PORT}`;
+const uiSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'ui.js'), 'utf8');
+const cssSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css'), 'utf8');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -391,6 +393,13 @@ check('重试后没有错误气泡', list.children.filter((n) => n.classList.con
 // ---------- 收尾 ----------
 server.kill();
 try { fs.rmSync(DATA, { recursive: true, force: true }); } catch { /* ignore */ }
+
+check('sticker loading 骨架是空盒', /const skeleton = el\('div', 'sticker-skeleton'\);/.test(uiSource)
+  && !/sticker-skeleton[^\n]*stickerText/.test(uiSource)
+  && /\.sticker-skeleton\s*\{[^}]*width:\s*160px/u.test(cssSource));
+check('sticker 骨架与图片共用固定盒尺寸', /const box = stickerBox\(message\);/u.test(uiSource)
+  && /skeleton\.style\.width = `\$\{box\.width\}px`/u.test(uiSource)
+  && /image\.style\.width = `\$\{box\.width\}px`/u.test(uiSource));
 
 let failed = 0;
 for (const c of checks) {
