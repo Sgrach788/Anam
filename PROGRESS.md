@@ -832,6 +832,28 @@
 - **验证**：真实 5 条 sticker 全部 `ready`，自然尺寸 300×300，0 failed；`a_VK` 预览 bbox 从全透明变为 `(0,5,238,238)`；接口仍 200。
 - **SW**：升至 `companion-v36-2026-11-04`；手机需重开两次或 reset，新 DB 会重新取预览。
 
+## 正文防模仿 + sticker 记录瘦身 + 空盒骨架 — 2026-11-04（v37）
+
+- **正文禁止模仿表情**：
+  - `sanitizeReply` 新增独立句 `[表情] X` 剥除；只在句首或句末标点/换行后匹配，不误伤行内普通文字；
+  - 目录 prompt 与 `<anam-meta>` 指令各加一句“正文禁止书写 [表情] 格式；表情只能通过 meme 字段选择”。
+- **sticker 记录去 text**：
+  - 新 sticker 不再写 `text`；展示文本只在 `buildContextMessages`（`[表情] alt`）、inbox 和失败占位中派生；
+  - 启动时迁移旧 sticker：去掉 text 并备份 `messages.jsonl.pre-sticker-text.bak`；
+  - `normalize` 允许无 text 的 sticker，重启不会丢消息；token 估算/摘要来源改用 `messageText()`。
+- **loading 骨架**：
+  - 骨架改为空盒，不再放 `[表情] X` 文字；
+  - 按 `media.w/h` 预先锁定 160px 内的同尺寸盒子；图片初始 `display:none`，到达后同尺寸替换；
+  - 空盒 160×160 → 图片 160×160，节点盒子全程 160×160，不跳位。
+- **验证**：
+  - `reply-test` **16/16**（独立 `[表情]` 句、句中独立句、行内文字不误伤）；
+  - `meme-chat-test` **16/16**（sticker 无 `text`、prompt 禁令、发送/频率/只发表情）；
+  - `meme-test` **31/31**（旧 sticker text 迁移移除）；
+  - `dom-smoke` **59/59**（骨架空盒 + 固定盒尺寸静态断言）；
+  - 真实浏览器限速/暂停预览：loading 骨架 `skeletonText=""`、空盒 `160×160`、图片 `display:none`；ready 后 `160×160`、`display:block`，节点盒子不变。
+- **SW**：升至 `companion-v37-2026-11-04`。
+
+
 
 
 

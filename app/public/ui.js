@@ -346,6 +346,14 @@ function stickerText(message) {
   return `[表情] ${String(message?.media?.alt || '表情')}`;
 }
 
+function stickerBox(message) {
+  const width = Number(message?.media?.w) || 0;
+  const height = Number(message?.media?.h) || 0;
+  if (width <= 0 || height <= 0) return null;
+  const scale = Math.min(1, 160 / Math.max(width, height));
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
+}
+
 function addMessageBubble(message) {
   if (message?.type === 'sticker') return addStickerBubble(message);
   return addBubble(message?.role, message?.text, message?.id, message?.at);
@@ -357,14 +365,20 @@ function addStickerBubble(message) {
   maybeSeparator(at);
   const node = el('div', `msg sticker ${message.role === 'user' ? 'me' : 'ai'}`);
   node.dataset.state = 'loading';
+  const box = stickerBox(message);
   const image = el('img');
   image.alt = String(message.media?.alt || '表情');
   image.loading = 'eager';
-  image.style.visibility = 'hidden';
-  const width = Number(message.media?.w) || 0;
-  const height = Number(message.media?.h) || 0;
-  if (width > 0 && height > 0) image.style.aspectRatio = `${width} / ${height}`;
-  const skeleton = el('div', 'sticker-skeleton', stickerText(message));
+  image.style.display = 'none';
+  if (box) {
+    image.style.width = `${box.width}px`;
+    image.style.height = `${box.height}px`;
+  }
+  const skeleton = el('div', 'sticker-skeleton');
+  if (box) {
+    skeleton.style.width = `${box.width}px`;
+    skeleton.style.height = `${box.height}px`;
+  }
   node.appendChild(skeleton);
   node.appendChild(image);
   if (message.id) {
@@ -542,7 +556,7 @@ async function loadStickerImage(message, image, skeleton, node) {
     image.onload = null;
     image.onerror = null;
     skeleton.remove();
-    image.style.visibility = '';
+    image.style.display = 'block';
     // 锁定预览盒子尺寸，原图替换时绝不跳位。
     const box = image.getBoundingClientRect?.();
     if (box && box.width > 0 && box.height > 0) {

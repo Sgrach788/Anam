@@ -11,6 +11,10 @@ check('去掉「今天 19:12：」前缀', sanitizeReply('今天 19:12：在的�
 check('只有标签时变空', sanitizeReply('[昨天 22:13]') === '');
 check('去掉 [10月28日 09:05]', sanitizeReply('[10月28日 09:05] 早。') === '早。');
 check('正常文本不动', sanitizeReply('今天有点累。') === '今天有点累。');
+// 模型把历史 sticker 抄成独立正文；只清独立句，不误伤行内文字
+check('去掉独立 [表情] 句', sanitizeReply('[表情] 开心。') === '', sanitizeReply('[表情] 开心。'));
+check('去掉句中独立 [表情] 句', sanitizeReply('今天真好。[表情] 开心。') === '今天真好。', sanitizeReply('今天真好。[表情] 开心。'));
+check('保留行内普通文字', sanitizeReply('看到你很开心。') === '看到你很开心。');
 
 // 切句
 check('句号切点', findSentenceCut('第一句。第二句') === 4, findSentenceCut('第一句。第二句'));

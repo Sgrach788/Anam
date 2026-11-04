@@ -85,6 +85,7 @@ check('目录有 3 张合格表情', list.counts.qualified === 3 && list.counts.
 
 const promptBlock = memePromptBlock(list.memes);
 check('目录 prompt 含 id/label', promptBlock.includes(a.meme.id) && promptBlock.includes('开心') && promptBlock.includes('meme'));
+check('prompt 禁止正文写 [表情]', promptBlock.includes('正文禁止书写 [表情]'));
 check('空目录 prompt 为零', memePromptBlock([]) === '');
 
 const first = await chat('meme-chat-1', '今天有点累，发个表情');
@@ -94,6 +95,7 @@ let firstStickers = stickers(msgs);
 check('第一条 AI 表情已落盘', firstStickers.length === 1, `stickers=${firstStickers.length}`);
 const sticker1 = firstStickers[0];
 check('表情引用正确', sticker1?.media?.ref === `meme:${a.meme.id}` && sticker1?.media?.alt === '开心', JSON.stringify(sticker1?.media));
+check('sticker 记录不再保存 text 字段', sticker1 && !Object.prototype.hasOwnProperty.call(sticker1, 'text'), JSON.stringify(sticker1));
 check('文字在表情之前', msgs.some((m) => m.seq === sticker1.seq - 1 && m.role === 'assistant' && m.type === 'text'));
 
 const seqAfterFirst = msgs.at(-1).seq;

@@ -191,6 +191,9 @@ await fetch(`${BASE}/api/memes/${firstId}`, {
 
 const usage = await (await fetch(`${BASE}/api/memes/${firstId}/usage`)).json();
 check('历史引用计数', usage.references === 1, JSON.stringify(usage));
+const migratedMessages = (await (await fetch(`${BASE}/api/messages?limit=200`)).json()).messages;
+const migratedStickers = migratedMessages.filter((message) => message.type === 'sticker');
+check('旧 sticker text 迁移移除', migratedStickers.length === 1 && migratedStickers.every((message) => !('text' in message)), JSON.stringify(migratedStickers[0]));
 const noConfirm = await fetch(`${BASE}/api/memes/${firstId}`, { method: 'DELETE' });
 const noConfirmBody = await noConfirm.json();
 check('删除需要确认', noConfirm.status === 409 && noConfirmBody.references === 1);

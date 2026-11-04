@@ -93,7 +93,9 @@ function normalizeMedia(value) {
 
 // 老格式（只有 at 毫秒数、没有 v/seq/type/media）也能读，读进来统一成当前形状。
 function normalize(stored) {
-  if (!stored || typeof stored.text !== 'string') return null;
+  if (!stored || typeof stored !== 'object') return null;
+  const type = MESSAGE_TYPES.has(stored.type) ? stored.type : 'text';
+  if (type !== 'sticker' && typeof stored.text !== 'string') return null;
   const role = stored.role === 'assistant' ? 'assistant' : stored.role === 'user' ? 'user' : null;
   if (!role) return null;
   const msg = {
@@ -101,12 +103,13 @@ function normalize(stored) {
     seq: Number.isInteger(stored.seq) && stored.seq > 0 ? stored.seq : 0,
     id: typeof stored.id === 'string' && stored.id ? stored.id : crypto.randomUUID(),
     role,
-    text: stored.text,
     at: isoUtc(stored.at),
-    type: MESSAGE_TYPES.has(stored.type) ? stored.type : 'text',
+    type,
     media: normalizeMedia(stored.media),
     assistantId: typeof stored.assistantId === 'string' && stored.assistantId ? stored.assistantId : 'anam',
   };
+  // sticker 的展示文本由 media.alt 派生，不落冗余 text 字段。
+  if (type !== 'sticker') msg.text = stored.text;
   // 回复与用户消息的关联必须保留，否则重启后幂等回放会失效
   if (typeof stored.replyTo === 'string' && stored.replyTo) msg.replyTo = stored.replyTo;
   if (stored.mode === 'mock' || stored.mode === 'live') msg.mode = stored.mode;
@@ -127,6 +130,20 @@ if (fs.existsSync(LOG)) {
 for (const m of messages) if (m.seq) nextSeq = Math.max(nextSeq, m.seq + 1);
 for (const m of messages) if (!m.seq) m.seq = nextSeq++;
 messages.sort((a, b) => a.seq - b.seq);
+
+// 一次性迁移：sticker 的展示文本由 media.alt 派生，去掉旧记录里的冗余 text。
+if (rawLines.some((r) => r?.type === 'sticker' && 'text' in r)) {
+  try {
+    const backup = `${LOG}.pre-sticker-text.bak`;
+    if (!fs.existsSync(backup)) fs.copyFileSync(LOG, backup);
+    const tmp = `${LOG}.tmp`;
+    fs.writeFileSync(tmp, messages.map((m) => JSON.stringify(m)).join('\n') + (messages.length ? '\n' : ''), 'utf8');
+    fs.renameSync(tmp, LOG);
+    console.log('[migrate] stripped sticker text (backup: pre-sticker-text.bak)');
+  } catch (err) {
+    console.error('[migrate] sticker text failed:', err.message);
+  }
+}
 
 // 一次性迁移：补齐 type/media（备份原文件，原子写回）
 if (rawLines.some((r) => !('type' in r) || !('media' in r) || !('assistantId' in r))) {
@@ -626,11 +643,17 @@ async function indexMemoryVectors(records) {
 }
 
 // L1 工作记忆：最近 30 轮原文（第 6 步接真模型时直接用这段）。
+function messageText(message) {
+  if (!message) return '';
+  if (message.type === 'sticker') return `[表情] ${message.media?.alt || ''}`;
+  return message.text || '';
+}
+
 function buildContextMessages(now = new Date()) {
-  return messages.slice(-(L1_TURNS * 2)).map((m) => {
-    const text = m.text || (m.type === 'sticker' ? `[表情] ${m.media?.alt || ''}` : '');
-    return { role: m.role, content: `[${relativeTimeLabel(m.at, now)}] ${text}` };
-  });
+  return messages.slice(-(L1_TURNS * 2)).map((m) => ({
+    role: m.role,
+    content: `[${relativeTimeLabel(m.at, now)}] ${messageText(m)}`,
+  }));
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -970,6 +993,7 @@ async function streamModel(onDelta, maxTokens, memeSnapshot = null) {
     { role: 'system', content: [
       buildSystemPrompt(nowDate, loadProfile(), query, queryVector, memeSnapshot),
       '在可见回复正文结束后，最后追加一个独立的 <anam-meta>JSON</anam-meta> 内部块，不能在正文中提及这个块。JSON 格式为 {"emotion":{"pleasure":-1到1,"energy":0到1},"signature":"不超过56字的AI自身短想法，没变化时空字符串","spacePost":"AI自身动态，没有合适内容时空字符串","meme":"可选，表情包目录里的 id；不合适时留空字符串"}。',
+      '正文禁止书写 [表情] 格式；表情只能通过 <anam-meta> 的 meme 字段选择。',
       '情绪只表达你自己的愉悦度与活跃度。签名和动态只写你自身，不提、不暗示用户身份、经历、偏好或隐私；动态必须是独立于用户当前内容的自身想法或状态，不能改写用户刚说的事，不确定就留空。',
     ].join('\n\n') },
     ...buildContextMessages(nowDate),
@@ -1308,7 +1332,6 @@ async function streamReply(res, userMsg, tokensIn) {
     const stickerMessage = append({
       id: crypto.randomUUID(),
       role: 'assistant',
-      text: `[表情] ${sticker.label}`,
       at: nowIso(),
       type: 'sticker',
       media: { ref: memeRef(sticker.id), w: sticker.w, h: sticker.h, alt: sticker.label },
@@ -1387,7 +1410,7 @@ async function completeOnce(systemContent, userContent, maxTokens = 300, tempera
 // 输入 token：人设 + L1 最近 30 轮 + 这一句（mock 阶段按字数估算）
 function estimateInputTokens(text) {
   let n = estimateTokens(PERSONA) + estimateTokens(profileBlock()) + estimateTokens(memoryBlock(text)) + 12;
-  for (const m of messages.slice(-(L1_TURNS * 2))) n += estimateTokens(m.text) + 4;
+  for (const m of messages.slice(-(L1_TURNS * 2))) n += estimateTokens(messageText(m)) + 4;
   return n + estimateTokens(text) + 4;
 }
 
@@ -1557,7 +1580,7 @@ async function maybeSummarize({ force = false } = {}) {
       const claims = batch.slice(0, 6).map((message) => ({ text: message.text.slice(0, 90), sourceId: message.id, evidence: message.text.slice(0, 180) }));
       summary = { summary: claims.map((claim) => claim.text).join('；').slice(0, 1500), claims, importance: 3, topics: [], entities: [], relations: [] };
     } else {
-      const sourceText = sourceMessages.map((m) => `[${m.id}|${m.seq}|${m.role}] ${String(m.text).slice(0, 500)}`).join('\n').slice(0, 16000);
+      const sourceText = sourceMessages.map((m) => `[${m.id}|${m.seq}|${m.role}] ${messageText(m).slice(0, 500)}`).join('\n').slice(0, 16000);
       const system = [
         '你是 Anam 的长期记忆整理器。只总结下面真实对话中明确出现的事实、事件、偏好和约定；不能补造或推断用户事实。',
         '只输出 JSON：最多6条 claims([{text,sourceId,evidence}])、importance(1到5)、topics(字符串数组)、entities([{name,sourceId}])、relations([{from,to,label,sourceId,evidence}])。每条 claim 简短，必须附 sourceId 和原文连续子串 evidence；没有明确原文支撑就省略，不输出自由发挥的 summary。',
