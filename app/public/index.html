@@ -207,6 +207,22 @@
       <section class="console-section meme-console" id="memeSection">
         <div class="section-title"><b>表情包</b><span id="memeCounts" class="muted">读取中…</span></div>
         <p class="muted" id="memeState">总开关：读取中…</p>
+        <div class="meme-strategy">
+          <div class="section-title"><b>发送策略</b><span id="memeStrategyMsg" class="muted"></span></div>
+          <div class="meme-strategy-row">
+            <label for="memeProbability">发送概率</label>
+            <input id="memeProbability" type="range" min="0" max="100" step="5" />
+            <output id="memeProbabilityValue">100%</output>
+          </div>
+          <div class="meme-strategy-row">
+            <label for="memeMinGap">两次表情至少隔</label>
+            <input id="memeMinGap" type="number" min="0" max="5" step="1" />
+            <span class="muted">条 AI 完整回复</span>
+          </div>
+          <label class="meme-toggle"><span>提示“每约 4 条回复 1 张”</span><input id="memeSoftFrequency" type="checkbox" /></label>
+          <p class="muted">每条回复最多 1 张（固定）</p>
+          <p class="muted" id="memeStrategyStats">最近 AI 回复：—</p>
+        </div>
         <div class="meme-upload">
           <label class="upload-btn">上传表情<input id="memeFile" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden /></label>
           <span id="memeMsg" class="side-msg"></span>

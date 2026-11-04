@@ -10,6 +10,7 @@ import {
   MEME_MAX_BYTES, MEME_MAX_COUNT, MEME_STATIC_EDGE,
   isSafeMemeId, newMemeId, sanitizeLabel, sanitizeTags,
   sniffMime, imageDimensions, sha256, memeRef, mediaRefId, selectCatalog, memePromptBlock,
+  memeStrategyFromConfig, memeStrategyPatch, rollMemeGate,
 } from './lib/memes.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -283,6 +284,21 @@ function memeCounts() {
   };
 }
 
+function memeStats() {
+  const groups = [];
+  const seen = new Set();
+  for (let i = messages.length - 1; i >= 0 && groups.length < 20; i--) {
+    const message = messages[i];
+    if (message.role !== 'assistant') continue;
+    const key = message.replyTo || message.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    groups.push(messages.filter((row) => row.role === 'assistant' && (row.replyTo || row.id) === key));
+  }
+  const withSticker = groups.filter((group) => group.some((message) => message.type === 'sticker')).length;
+  return { recentAiReplies: groups.length, recentWithSticker: withSticker };
+}
+
 function memeFilePath(record) {
   return path.join(MEME_DIR, record.file);
 }
@@ -332,33 +348,64 @@ function memeUsageCount(id) {
 }
 
 // Phase 2A：每次聊天请求开始时构建一份快照；注入和校验都用它，目录中途变化不影响本次。
+// 固定骰子入口：测试可用 MEME_DICE=0.1/0.9 覆盖 Math.random。
+function memeDice() {
+  const raw = process.env.MEME_DICE;
+  if (raw !== undefined && raw !== '') {
+    const value = Number(raw);
+    if (Number.isFinite(value) && value >= 0 && value <= 1) return value;
+  }
+  return Math.random();
+}
+
 function buildMemeCatalogSnapshot() {
-  if (!loadMemeEnabled()) return { enabled: false, selected: [], byId: new Map(), prompt: '' };
+  const strategy = loadMemeStrategy();
+  const empty = {
+    enabled: false,
+    gated: true,
+    reason: 'disabled',
+    selected: [],
+    byId: new Map(),
+    prompt: '',
+    strategy,
+    dice: null,
+  };
+  if (!loadMemeEnabled()) return empty;
+  const dice = memeDice();
+  if (!rollMemeGate(strategy.probability, dice)) {
+    return { ...empty, reason: 'probability', dice };
+  }
   const selected = selectCatalog(memes.map(memeView)).selected;
   return {
     enabled: true,
+    gated: false,
     selected,
     byId: new Map(selected.map((record) => [record.id, record])),
-    prompt: memePromptBlock(selected),
+    prompt: memePromptBlock(selected, { softFrequency: strategy.softFrequency }),
+    strategy,
+    dice,
   };
 }
 
-function pickStickerFor(metadata, snapshot) {
+function pickStickerFor(metadata, snapshot, userMsgId = '') {
   const id = String(metadata?.meme || '').trim();
   if (!id || !snapshot?.byId.has(id) || !isSafeMemeId(id)) return null;
-  // 最近两条 AI「回复」（按 replyTo 归组）里已有表情 → 本次剥掉。
-  // 即两次表情之间至少隔两条纯文字回复，而不是两条气泡。
-  const groups = [];
-  const seen = new Set();
-  for (let i = messages.length - 1; i >= 0 && groups.length < 2; i--) {
-    const message = messages[i];
-    if (message.role !== 'assistant') continue;
-    const key = message.replyTo || message.id;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    groups.push(messages.filter((row) => row.role === 'assistant' && (row.replyTo || row.id) === key));
+  const gap = Math.max(0, Number(snapshot.strategy?.minGapReplies) || 0);
+  if (gap > 0) {
+    // 只统计当前回复之前的完整 AI 回复组；当前回复的 text 不能算作“已间隔”。
+    const groups = [];
+    const seen = new Set();
+    for (let i = messages.length - 1; i >= 0 && groups.length < gap; i--) {
+      const message = messages[i];
+      if (message.role !== 'assistant') continue;
+      if (userMsgId && message.replyTo === userMsgId) continue;
+      const key = message.replyTo || message.id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      groups.push(messages.filter((row) => row.role === 'assistant' && (row.replyTo || row.id) === key));
+    }
+    if (groups.some((group) => group.some((message) => message.type === 'sticker'))) return null;
   }
-  if (groups.some((group) => group.some((message) => message.type === 'sticker'))) return null;
   return snapshot.byId.get(id);
 }
 
@@ -904,6 +951,23 @@ function saveMemeEnabled(enabled) {
   return cfg.memeEnabled;
 }
 
+function loadMemeStrategy() {
+  return memeStrategyFromConfig(readConfig());
+}
+
+function saveMemeStrategy(patch) {
+  const clean = memeStrategyPatch(patch);
+  const cfg = readConfig();
+  cfg.v = Number.isInteger(cfg.v) ? cfg.v : 1;
+  if ('probability' in clean) cfg.memeSendProbability = clean.probability;
+  if ('minGapReplies' in clean) cfg.memeMinGapReplies = clean.minGapReplies;
+  if ('softFrequency' in clean) cfg.memeSoftFrequency = clean.softFrequency;
+  const tmp = `${CONFIG_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2) + '\n', 'utf8');
+  fs.renameSync(tmp, CONFIG_FILE);
+  return loadMemeStrategy();
+}
+
 function loadUserProfile() {
   const saved = readConfig().userProfile;
   const profile = emptyUserProfile();
@@ -1320,7 +1384,7 @@ async function streamReply(res, userMsg, tokensIn) {
 
   const parsedOutput = parseAssistantMetadata(reply);
   // 整条回复完成后再校验表情；无效只剥掉，不改写、不重新生成。
-  const sticker = pickStickerFor(parsedOutput.metadata, memeSnapshot);
+  const sticker = pickStickerFor(parsedOutput.metadata, memeSnapshot, userMsg.id);
   if (!saved.length && !sticker) {
     emit('error', { message: '模型没有返回内容', code: 'empty_reply', status: 502 });
     if (alive && !res.writableEnded) res.end();
@@ -1724,7 +1788,13 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/memes' && req.method === 'GET') {
       const list = memes.map(memeView)
         .sort((a, b) => (Date.parse(b.created_at) - Date.parse(a.created_at)) || String(b.id).localeCompare(String(a.id)));
-      return sendJson(res, 200, { memes: list, counts: memeCounts(), enabled: loadMemeEnabled() });
+      return sendJson(res, 200, {
+        memes: list,
+        counts: memeCounts(),
+        enabled: loadMemeEnabled(),
+        strategy: loadMemeStrategy(),
+        stats: memeStats(),
+      });
     }
 
     if (url.pathname === '/api/memes' && req.method === 'POST') {
@@ -1805,8 +1875,14 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/memes/settings' && req.method === 'POST') {
       let payload = {};
       try { payload = JSON.parse(await readBody(req) || '{}'); } catch { return sendJson(res, 400, { error: 'invalid_json' }); }
-      const enabled = saveMemeEnabled(payload.enabled !== false);
-      return sendJson(res, 200, { ok: true, enabled });
+      const hasStrategy = ['probability', 'minGapReplies', 'softFrequency'].some((key) => key in payload);
+      let strategy = loadMemeStrategy();
+      if (hasStrategy) {
+        try { strategy = saveMemeStrategy(payload); } catch (err) { return sendJson(res, 400, { error: err.message, message: '发送策略参数无效。' }); }
+      }
+      let enabled = loadMemeEnabled();
+      if ('enabled' in payload) enabled = saveMemeEnabled(payload.enabled !== false);
+      return sendJson(res, 200, { ok: true, enabled, strategy, stats: memeStats() });
     }
 
     const memePreviewMatch = url.pathname.match(/^\/api\/memes\/([^/]+)\/preview$/u);

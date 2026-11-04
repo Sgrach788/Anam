@@ -147,6 +147,7 @@ const ids = [
   'inboxView', 'chatView', 'contactsView', 'aiProfileView', 'userProfileView', 'tabContacts', 'tabConsole', 'conversationCard', 'conversationSearch', 'inboxAiName', 'inboxAiAvatar', 'inboxPreview', 'inboxTime', 'userAvatar', 'userName', 'userProfileOpen', 'userProfileBack', 'userAvatarPreview', 'userAvatarFile', 'userNameInput', 'userProfileSave', 'aiProfileOpen', 'aiProfileBack', 'chatBack', 'contactAnam', 'addAiPreview', 'infoPersona', 'infoTone', 'infoInitiative', 'infoBoundaries', 'profileAiAvatar', 'profileAiName', 'profileAiSignature',
   'embeddingBaseInput', 'embeddingModelInput', 'embeddingKeyInput', 'embeddingPriceInput', 'embeddingSaveBtn', 'embeddingClearBtn', 'embeddingTestBtn', 'embeddingMsg', 'memoryIndexBtn', 'memorySummarizeBtn', 'memoryStats', 'memorySearchForm', 'memorySearchInput', 'memoryGraph', 'memoryResults', 'summaryOpenBtn', 'summaryPanel', 'summaryBack', 'summaryList',
   'memeCounts', 'memeState', 'memeFile', 'memeMsg', 'memeGrid', 'memeEmpty', 'memeEntry', 'memeEntryCounts', 'memeEnabledToggle', 'memeDeleteDialog', 'memeDeleteText', 'memeDeleteCancel', 'memeDeleteConfirm', 'memeSection',
+  'memeProbability', 'memeProbabilityValue', 'memeMinGap', 'memeSoftFrequency', 'memeStrategyMsg', 'memeStrategyStats',
 ];
 for (const id of ids) byId.set(id, new FakeEl('div'));
 const spaceSubmit = new FakeEl('button'); spaceSubmit.type = 'submit'; byId.get('spaceComposer').appendChild(spaceSubmit);
@@ -282,6 +283,27 @@ check('本机资料保存独立于 AI 资料', byId.get('userName').textContent 
 byId.get('tabConsole').trigger('click');
 await sleep(450);
 check('控制台可打开', byId.get('consolePanel').hidden === false);
+check('终端显示表情发送策略', byId.get('memeProbability').value === '100'
+  && byId.get('memeMinGap').value === '2'
+  && byId.get('memeSoftFrequency').checked === false
+  && byId.get('memeState').textContent.includes('AI 资料'));
+byId.get('memeProbability').value = '25';
+byId.get('memeProbability').trigger('input');
+byId.get('memeProbability').trigger('change');
+byId.get('memeMinGap').value = '0';
+byId.get('memeMinGap').trigger('change');
+byId.get('memeSoftFrequency').checked = true;
+byId.get('memeSoftFrequency').trigger('change');
+await sleep(750);
+const strategySaved = await (await fetch(`${BASE}/api/memes`)).json();
+check('终端保存发送策略', strategySaved.strategy.probability === 25
+  && strategySaved.strategy.minGapReplies === 0
+  && strategySaved.strategy.softFrequency === true
+  && strategySaved.strategy.maxPerReply === 1, JSON.stringify(strategySaved.strategy));
+await fetch(`${BASE}/api/memes/settings`, {
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ probability: 100, minGapReplies: 2, softFrequency: false }),
+});
 byId.get('summaryOpenBtn').trigger('click');
 await sleep(300);
 check('打开对话摘要页', byId.get('summaryPanel').hidden === false);

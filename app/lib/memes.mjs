@@ -11,6 +11,68 @@ export const MEME_CATALOG_MAX = 30;
 export const MEME_LABEL_MAX = 20;
 export const MEME_TAGS_MAX = 2;
 export const MEME_TAG_MAX = 10;
+export const MEME_MAX_PER_REPLY = 1;
+export const MEME_STRATEGY_DEFAULTS = Object.freeze({
+  probability: 100,
+  minGapReplies: 2,
+  softFrequency: false,
+  maxPerReply: MEME_MAX_PER_REPLY,
+});
+
+function clampInt(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(number)));
+}
+
+export function memeStrategyFromConfig(config = {}) {
+  return {
+    probability: clampInt(config.memeSendProbability, 0, 100, MEME_STRATEGY_DEFAULTS.probability),
+    minGapReplies: clampInt(config.memeMinGapReplies, 0, 5, MEME_STRATEGY_DEFAULTS.minGapReplies),
+    softFrequency: config.memeSoftFrequency === true,
+    maxPerReply: MEME_MAX_PER_REPLY,
+  };
+}
+
+// 只接受显式字段；越界/非数字抛错，由 API 返回 400。
+export function memeStrategyPatch(input = {}) {
+  const patch = {};
+  if ('probability' in input) {
+    const value = Number(input.probability);
+    if (!Number.isFinite(value) || value < 0 || value > 100) throw new Error('invalid_probability');
+    patch.probability = Math.round(value);
+  }
+  if ('minGapReplies' in input) {
+    const value = Number(input.minGapReplies);
+    if (!Number.isFinite(value) || value < 0 || value > 5) throw new Error('invalid_min_gap');
+    patch.minGapReplies = Math.round(value);
+  }
+  if ('softFrequency' in input) {
+    if (typeof input.softFrequency !== 'boolean') throw new Error('invalid_soft_frequency');
+    patch.softFrequency = input.softFrequency;
+  }
+  return patch;
+}
+
+// 固定骰子入口：测试可直接传 dice；概率 0/100 不依赖随机数。
+export function rollMemeGate(probability, dice) {
+  const chance = Number(probability);
+  if (!Number.isFinite(chance) || chance <= 0) return false;
+  if (chance >= 100) return true;
+  const roll = Number(dice);
+  return Number.isFinite(roll) && roll >= 0 && roll <= 1 ? roll * 100 < chance : false;
+}
+
+export function memeSoftFrequencyBlock(enabled) {
+  if (!enabled) return '';
+  return [
+    '【表情使用频率】',
+    '参考每约 4 条助手回复有 1 条配图；按完整回复计算，不必精确计数，也不必固定在第 4 条。',
+    '没有合适表情时不要为凑比例勉强发送。',
+    '用户明确要求时不受软频率参考约束。',
+    '不要向用户解释频率判断。',
+  ].join('\n');
+}
 
 // 12 个 URL 安全字符；与 UUID 区分，但同样全局唯一、永不复用。
 export function newMemeId() {
@@ -164,7 +226,7 @@ export function catalogLine(record) {
 }
 
 // 只注入稳定前缀之后；空目录/总开关关闭时调用方不传，整块零 token。
-export function memePromptBlock(selected) {
+export function memePromptBlock(selected, { softFrequency = false } = {}) {
   const rows = (selected || [])
     .filter((record) => record?.id && record.label)
     .map(catalogLine)
@@ -175,8 +237,9 @@ export function memePromptBlock(selected) {
     '只在语境合适时选一张；每条回复最多一张；不必刻意使用。',
     '正文禁止书写 [表情] 格式；表情只能通过 <anam-meta> 的 meme 字段选择。',
     '选择方式：在 <anam-meta> 里加 "meme":"表情id"；不要编造 id，没合适的就留空字符串。',
+    memeSoftFrequencyBlock(softFrequency),
     ...rows.map((line) => `- ${line}`),
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 export function readJsonlFile(file) {

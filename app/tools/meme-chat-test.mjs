@@ -86,6 +86,10 @@ check('目录有 3 张合格表情', list.counts.qualified === 3 && list.counts.
 const promptBlock = memePromptBlock(list.memes);
 check('目录 prompt 含 id/label', promptBlock.includes(a.meme.id) && promptBlock.includes('开心') && promptBlock.includes('meme'));
 check('prompt 禁止正文写 [表情]', promptBlock.includes('正文禁止书写 [表情]'));
+const softBlock = memePromptBlock(list.memes, { softFrequency: true });
+check('软频率提示包含确认文案', softBlock.includes('每约 4 条')
+  && softBlock.includes('用户明确要求时不受软频率参考约束')
+  && softBlock.includes('不要向用户解释频率判断'));
 check('空目录 prompt 为零', memePromptBlock([]) === '');
 
 const first = await chat('meme-chat-1', '今天有点累，发个表情');
@@ -121,6 +125,33 @@ msgs = await allMessages();
 check('总开关关闭后不再发', stickers(msgs).length === beforeOff);
 await fetch(`${BASE}/api/memes/settings`, {
   method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: true }),
+});
+
+const beforeP0 = stickers(await allMessages()).length;
+await fetch(`${BASE}/api/memes/settings`, {
+  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ probability: 0 }),
+});
+await chat('meme-chat-p0', '发个表情');
+msgs = await allMessages();
+check('概率 0% 不注入/不发表情', stickers(msgs).length === beforeP0);
+await fetch(`${BASE}/api/memes/settings`, {
+  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ probability: 100 }),
+});
+const invalidSettings = await fetch(`${BASE}/api/memes/settings`, {
+  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ probability: 101 }),
+});
+check('概率越界被拒', invalidSettings.status === 400);
+
+await fetch(`${BASE}/api/memes/settings`, {
+  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ minGapReplies: 0 }),
+});
+const beforeGap0 = stickers(await allMessages()).length;
+await chat('meme-chat-gap0-1', '发个表情');
+await chat('meme-chat-gap0-2', '再发个表情');
+msgs = await allMessages();
+check('间隔 0 允许连续表情', stickers(msgs).length === beforeGap0 + 2);
+await fetch(`${BASE}/api/memes/settings`, {
+  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ minGapReplies: 2 }),
 });
 
 await stop(server);

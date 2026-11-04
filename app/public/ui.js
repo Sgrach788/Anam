@@ -122,9 +122,17 @@ const memeDeleteDialog = document.getElementById('memeDeleteDialog');
 const memeDeleteText = document.getElementById('memeDeleteText');
 const memeDeleteCancel = document.getElementById('memeDeleteCancel');
 const memeDeleteConfirm = document.getElementById('memeDeleteConfirm');
+const memeProbability = document.getElementById('memeProbability');
+const memeProbabilityValue = document.getElementById('memeProbabilityValue');
+const memeMinGap = document.getElementById('memeMinGap');
+const memeSoftFrequency = document.getElementById('memeSoftFrequency');
+const memeStrategyMsg = document.getElementById('memeStrategyMsg');
+const memeStrategyStats = document.getElementById('memeStrategyStats');
 let memeList = [];
 let memeEnabled = true;
 let memeDeleteTarget = null;
+let memeStrategyTimer = null;
+let memeStrategyDraft = {};
 const memePreviewUrls = new Map();
 const memeOriginalUrls = new Map();
 const memePreviewInflight = new Map();
@@ -1331,6 +1339,51 @@ function updateMemeSummary(counts, enabled) {
   memeEnabledToggle.checked = memeEnabled;
 }
 
+function updateMemeStrategy(strategy, stats) {
+  if (strategy) {
+    memeProbability.value = String(Number(strategy.probability ?? 100));
+    memeProbabilityValue.textContent = `${Number(strategy.probability ?? 100)}%`;
+    memeMinGap.value = String(Number(strategy.minGapReplies ?? 2));
+    memeSoftFrequency.checked = strategy.softFrequency === true;
+  }
+  if (stats) {
+    const total = Number(stats.recentAiReplies) || 0;
+    const withSticker = Number(stats.recentWithSticker) || 0;
+    memeStrategyStats.textContent = total
+      ? `最近 ${total} 条 AI 回复：${withSticker} 条带表情`
+      : '最近 AI 回复：暂无';
+  }
+}
+
+async function saveMemeStrategy(patch) {
+  try {
+    const response = await apiFetch('/api/memes/settings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
+    updateMemeStrategy(data.strategy, data.stats);
+    memeStrategyMsg.textContent = '已保存';
+    clearTimeout(memeStrategyTimer);
+    memeStrategyTimer = setTimeout(() => { memeStrategyMsg.textContent = ''; }, 1500);
+  } catch (err) {
+    memeStrategyMsg.textContent = `保存失败：${err.message}`;
+    await loadMemes();
+  }
+}
+
+function scheduleMemeStrategy(patch) {
+  Object.assign(memeStrategyDraft, patch);
+  clearTimeout(memeStrategyTimer);
+  memeStrategyTimer = setTimeout(() => {
+    const body = memeStrategyDraft;
+    memeStrategyDraft = {};
+    void saveMemeStrategy(body);
+  }, 300);
+}
+
 async function loadMemes() {
   try {
     const response = await apiFetch('/api/memes');
@@ -1338,6 +1391,7 @@ async function loadMemes() {
     const data = await response.json();
     memeList = data.memes || [];
     updateMemeSummary(data.counts, data.enabled !== false);
+    updateMemeStrategy(data.strategy, data.stats);
     if (!consolePanel.hidden) renderMemeGrid();
   } catch (err) {
     memeMsg.textContent = `表情包读取失败：${err.message}`;
@@ -1459,8 +1513,22 @@ async function openMemeDelete(meme) {
   }
 }
 
-memeFile.addEventListener('change', async (event) => {
-  const files = [...(event.target.files || [])];
+memeProbability.addEventListener('input', () => {
+  memeProbabilityValue.textContent = `${memeProbability.value}%`;
+});
+memeProbability.addEventListener('change', () => {
+  scheduleMemeStrategy({ probability: Number(memeProbability.value) });
+});
+memeMinGap.addEventListener('change', () => {
+  const value = Math.max(0, Math.min(5, Math.round(Number(memeMinGap.value) || 0)));
+  memeMinGap.value = String(value);
+  scheduleMemeStrategy({ minGapReplies: value });
+});
+memeSoftFrequency.addEventListener('change', () => {
+  scheduleMemeStrategy({ softFrequency: memeSoftFrequency.checked });
+});
+
+memeFile.addEventListener('change', async (event) => {  const files = [...(event.target.files || [])];
   event.target.value = '';
   if (!files.length) return;
   memeMsg.textContent = '正在上传…';
