@@ -872,6 +872,48 @@
 - **真实数据**：策略默认 `100/2/off`，最近 20 条 AI 回复 6 条带表情；库 44 张、目录 30、等待 14、待审 0。
 - **SW**：升至 `companion-v38-2026-11-04`。
 
+## Token 优化 P0 + P1 — 2026-11-05（v39）
+
+### P0 Prompt 缓存对齐
+
+- 新增 `app/lib/prompt.mjs`：
+  - `TIME_RULES`、`META_FORMAT`、`STICKER_BAN`、`EMOTION_RULES` 固定文本；
+  - `buildStableSystemPrefix()`：`PERSONA → profileBlock → 时间约束 → meta 格式 → 正文禁表情 → 情绪/签名/动态指令`；
+  - `buildSystemContent()`：`稳定前缀 → memory → recent posts → meme catalog → now → signature`。
+- `app/server.mjs:553 buildSystemPrompt` 改为使用上述纯函数；`streamModel` 不再把 meta/禁令/情绪指令追加在 `buildSystemPrompt` 之后（原追加已移入稳定前缀）。
+- **额外修正**：`profileBlock` 里的 `signature` 每轮会变，已移到尾巴的 `signatureBlock`，否则稳定前缀会被签名打穿。
+- 表情目录里的正文禁令已由稳定前缀承担，`memePromptBlock` 不再重复。
+- 稳定前缀单测：`prompt-cache-test.mjs` **8/8**（不同时间/记忆/动态/目录两次构建，稳定前缀逐字节相同）。
+
+### P1 L1 token 预算
+
+- 新增 `app/lib/context.mjs`：`L1_TOKEN_BUDGET=3000` + `buildL1Context()`；
+- `app/server.mjs:701 buildContextMessages` 使用预算版；最多 60 条（30 轮）仍是第二上限；
+- 从最新往最旧累加含 `[时间] ` 前缀的 token；最新一条用户 + 最新一条助手保底；
+- `estimateInputTokens` 改为基于实际截断后的上下文。
+- `l1-context-test.mjs` **7/7**：
+  - 60 条 × 500 汉字长历史只保留 5 条，估算 **2581 token**（≤3100），最新用户/助手在内；
+  - 短历史逐字节与旧版 `slice+map` 相同；
+  - 最新一轮超预算仍保留；100 条只取 60 条。
+
+### 真实缓存命中
+
+临时数据目录（不污染真实聊天）连发两次真模型请求：
+
+```
+第 1 次：tokensIn=424, promptCacheHit=0, promptCacheMiss=424, cost=¥0.001192
+第 2 次：tokensIn=452, promptCacheHit=256, promptCacheMiss=196, cost=¥0.001552
+```
+
+第二次 `prompt_cache_hit_tokens=256 > 0`，P0 验收通过。`usage.jsonl` 新增 `promptCacheHit` / `promptCacheMiss` 字段。
+
+### 版本/回归
+
+- `dom-smoke` 61/61、`meme-chat-test` 20/20、`meme-strategy-test` 16/16、`meme-test` 31/31、`reply-test` 16/16、`v1-integration` 通过。
+- SW **v39**；真实服务已重启，`catalog 30`、策略默认 100/2/off/1。
+- 观察期：P0 只调顺序，P1 只裁超预算最旧轮次；若风格明显变化，先查 P1 截断。
+
+
 
 
 

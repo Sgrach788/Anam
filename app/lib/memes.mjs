@@ -235,7 +235,6 @@ export function memePromptBlock(selected, { softFrequency = false } = {}) {
   return [
     '【可用表情包】',
     '只在语境合适时选一张；每条回复最多一张；不必刻意使用。',
-    '正文禁止书写 [表情] 格式；表情只能通过 <anam-meta> 的 meme 字段选择。',
     '选择方式：在 <anam-meta> 里加 "meme":"表情id"；不要编造 id，没合适的就留空字符串。',
     memeSoftFrequencyBlock(softFrequency),
     ...rows.map((line) => `- ${line}`),

@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { MAX_PART, findSentenceCut, findCommaCut, partDelay, sanitizeReply } from './lib/reply.mjs';
 import { extractFacts } from './lib/memory.mjs';
 import { cleanSelfPost, cleanSignature, parseAssistantMetadata, retrieveMemories, smoothEmotion, validateSummaryClaims, validateSummaryRelations } from './lib/v1.mjs';
+import { buildStableSystemPrefix, buildSystemContent } from './lib/prompt.mjs';
+import { buildL1Context, L1_TOKEN_BUDGET } from './lib/context.mjs';
 import {
   MEME_MAX_BYTES, MEME_MAX_COUNT, MEME_STATIC_EDGE,
   isSafeMemeId, newMemeId, sanitizeLabel, sanitizeTags,
@@ -549,18 +551,18 @@ function recentUserPostsBlock() {
 }
 
 function buildSystemPrompt(nowDate = new Date(), profile = loadProfile(), query = '', queryVector = null, memeCatalog = null) {
-  return [
-    PERSONA,
-    profileBlock(profile),
-    recentUserPostsBlock(),
-    memoryBlock(query, queryVector),
-    `现在是 ${formatNowLabel(nowDate)}（本地时间）。`,
-    '时间信息只在这两种情况下使用：用户问现在几点、今天几号、星期几；或需要判断「昨天 / 上次 / 多久以前 / 前几天」指的是哪件事。',
-    '不要主动提今天是几号、星期几，也不要在回复里报时。',
-    '回复里绝对不能出现时间标签（例如 [今天 19:12]）、日期或时间戳，也不要复述历史消息开头的时间。',
-    '对话历史每条开头的 [今天 12:30] / [昨天 22:13] 是那条消息的发送时间，只用来理解时间跨度，不要照抄进回复。',
-    memeCatalog?.prompt || '',
-  ].filter(Boolean).join('\n');
+  const stablePrefix = buildStableSystemPrefix({
+    persona: PERSONA,
+    profileText: profileBlock(profile),
+  });
+  return buildSystemContent({
+    stablePrefix,
+    memoryText: memoryBlock(query, queryVector),
+    recentPostsText: recentUserPostsBlock(),
+    memeText: memeCatalog?.prompt || '',
+    nowLine: `现在是 ${formatNowLabel(nowDate)}（本地时间）。`,
+    signatureText: signatureBlock(profile),
+  });
 }
 
 const usage = [];
@@ -697,10 +699,13 @@ function messageText(message) {
 }
 
 function buildContextMessages(now = new Date()) {
-  return messages.slice(-(L1_TURNS * 2)).map((m) => ({
-    role: m.role,
-    content: `[${relativeTimeLabel(m.at, now)}] ${messageText(m)}`,
-  }));
+  return buildL1Context(messages, {
+    maxMessages: L1_TURNS * 2,
+    budget: L1_TOKEN_BUDGET,
+    tokenize: estimateTokens,
+    timeLabel: (at) => relativeTimeLabel(at, now),
+    textOf: messageText,
+  });
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -999,10 +1004,16 @@ function profileBlock(profile = loadProfile()) {
     profile.initiative && `- 主动性：${profile.initiative}`,
     profile.boundaries && `- 边界：${profile.boundaries}`,
     profile.persona && `- 整体人设：${profile.persona}`,
-    profile.signature && `- 当前个性签名：${profile.signature}（只代表你此刻的自我表达，不是用户的个人事实）`,
   ].filter(Boolean);
   if (!rows.length) return '';
   return ['【你们之间的设定】', ...rows, '这些设定优先于人设默认值；但不要越过安全底线。'].join('\n');
+}
+
+// 签名每轮可能变化，绝不能放进稳定前缀。
+function signatureBlock(profile = loadProfile()) {
+  return profile.signature
+    ? `- 当前个性签名：${profile.signature}（只代表你此刻的自我表达，不是用户的个人事实）`
+    : '';
 }
 
 if (!fs.existsSync(CONFIG_FILE)) {
@@ -1054,12 +1065,7 @@ async function streamModel(onDelta, maxTokens, memeSnapshot = null) {
   const query = messages.at(-1)?.role === 'user' ? messages.at(-1).text : '';
   const queryVector = await embedQuery(query, estimateInputTokens(query));
   const messagesOut = [
-    { role: 'system', content: [
-      buildSystemPrompt(nowDate, loadProfile(), query, queryVector, memeSnapshot),
-      '在可见回复正文结束后，最后追加一个独立的 <anam-meta>JSON</anam-meta> 内部块，不能在正文中提及这个块。JSON 格式为 {"emotion":{"pleasure":-1到1,"energy":0到1},"signature":"不超过56字的AI自身短想法，没变化时空字符串","spacePost":"AI自身动态，没有合适内容时空字符串","meme":"可选，表情包目录里的 id；不合适时留空字符串"}。',
-      '正文禁止书写 [表情] 格式；表情只能通过 <anam-meta> 的 meme 字段选择。',
-      '情绪只表达你自己的愉悦度与活跃度。签名和动态只写你自身，不提、不暗示用户身份、经历、偏好或隐私；动态必须是独立于用户当前内容的自身想法或状态，不能改写用户刚说的事，不确定就留空。',
-    ].join('\n\n') },
+    { role: 'system', content: buildSystemPrompt(nowDate, loadProfile(), query, queryVector, memeSnapshot) },
     ...buildContextMessages(nowDate),
   ];
   if (process.env.DEBUG_PROMPT) {
@@ -1413,6 +1419,10 @@ async function streamReply(res, userMsg, tokensIn) {
   // 真模型：token 与花费以 API 返回的 usage 为准；没回 usage 才退回估算。
   const tokensOut = usage?.completion_tokens ?? estimateTokens(reply);
   const tokensInFinal = usage?.prompt_tokens ?? tokensIn;
+  const cacheHitRaw = usage?.prompt_cache_hit_tokens ?? usage?.prompt_tokens_details?.cached_tokens;
+  const cacheMissRaw = usage?.prompt_cache_miss_tokens
+    ?? (Number.isFinite(Number(cacheHitRaw)) && Number.isFinite(Number(usage?.prompt_tokens))
+      ? Number(usage.prompt_tokens) - Number(cacheHitRaw) : null);
   recordUsage({
     day,
     mode,
@@ -1421,6 +1431,8 @@ async function streamReply(res, userMsg, tokensIn) {
     tokensOut,
     estimated: !usage,
     costYuan: costOf(tokensInFinal, tokensOut),
+    ...(Number.isFinite(Number(cacheHitRaw)) ? { promptCacheHit: Number(cacheHitRaw) } : {}),
+    ...(Number.isFinite(Number(cacheMissRaw)) ? { promptCacheMiss: Number(cacheMissRaw) } : {}),
     userMsgId: userMsg.id,
     replyId: saved[0].id,
   });
@@ -1473,8 +1485,8 @@ async function completeOnce(systemContent, userContent, maxTokens = 300, tempera
 
 // 输入 token：人设 + L1 最近 30 轮 + 这一句（mock 阶段按字数估算）
 function estimateInputTokens(text) {
-  let n = estimateTokens(PERSONA) + estimateTokens(profileBlock()) + estimateTokens(memoryBlock(text)) + 12;
-  for (const m of messages.slice(-(L1_TURNS * 2))) n += estimateTokens(messageText(m)) + 4;
+  let n = estimateTokens(PERSONA) + estimateTokens(profileBlock()) + estimateTokens(signatureBlock()) + estimateTokens(memoryBlock(text)) + 12;
+  for (const m of buildContextMessages()) n += estimateTokens(m.content) + 4;
   return n + estimateTokens(text) + 4;
 }
 

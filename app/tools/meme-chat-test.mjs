@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { memePromptBlock } from '../lib/memes.mjs';
+import { STICKER_BAN } from '../lib/prompt.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 8934;
@@ -85,7 +86,7 @@ check('目录有 3 张合格表情', list.counts.qualified === 3 && list.counts.
 
 const promptBlock = memePromptBlock(list.memes);
 check('目录 prompt 含 id/label', promptBlock.includes(a.meme.id) && promptBlock.includes('开心') && promptBlock.includes('meme'));
-check('prompt 禁止正文写 [表情]', promptBlock.includes('正文禁止书写 [表情]'));
+check('正文禁令在稳定前缀', STICKER_BAN.includes('正文禁止书写 [表情]'));
 const softBlock = memePromptBlock(list.memes, { softFrequency: true });
 check('软频率提示包含确认文案', softBlock.includes('每约 4 条')
   && softBlock.includes('用户明确要求时不受软频率参考约束')
