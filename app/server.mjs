@@ -8,6 +8,8 @@ import { extractFacts } from './lib/memory.mjs';
 import { cleanSelfPost, cleanSignature, parseAssistantMetadata, retrieveMemories, smoothEmotion, validateSummaryClaims, validateSummaryRelations } from './lib/v1.mjs';
 import { buildStableSystemPrefix, buildSystemContent } from './lib/prompt.mjs';
 import { buildL1Context, L1_TOKEN_BUDGET } from './lib/context.mjs';
+import { PRODUCT_VERSION } from './lib/version.mjs';
+import { emptyBreakdown, normalizeBreakdown, sumBreakdown, cacheRate } from './lib/usage.mjs';
 import {
   MEME_MAX_BYTES, MEME_MAX_COUNT, MEME_STATIC_EDGE,
   isSafeMemeId, newMemeId, sanitizeLabel, sanitizeTags,
@@ -50,6 +52,7 @@ const BOOT_ID = crypto.randomUUID();
 // 所有时间都从这里取。FAKE_NOW 只给测试用（验证按本地 0 点切天），正常不设。
 const now = () => (process.env.FAKE_NOW ? new Date(process.env.FAKE_NOW) : new Date());
 const nowIso = () => now().toISOString();
+const STARTED_AT = nowIso();
 
 fs.mkdirSync(DATA, { recursive: true });
 
@@ -301,6 +304,69 @@ function memeStats() {
   return { recentAiReplies: groups.length, recentWithSticker: withSticker };
 }
 
+function readSwVersion() {
+  try {
+    const source = fs.readFileSync(path.join(PUB, 'sw.js'), 'utf8');
+    return source.match(/const VERSION = ['"]([^'"]+)['"]/u)?.[1] || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+function baseUrlHost() {
+  try { return new URL(loadConfig().baseUrl).host; } catch { return ''; }
+}
+
+function statusPayload() {
+  const budget = budgetState();
+  return {
+    productVersion: PRODUCT_VERSION,
+    swVersion: readSwVersion(),
+    schemaVersion: SCHEMA,
+    mode: isMockMode() ? 'mock' : 'live',
+    model: loadConfig().model,
+    baseUrlHost: baseUrlHost(),
+    startedAt: STARTED_AT,
+    uptimeSeconds: Math.round(process.uptime()),
+    budget: {
+      spentYuan: budget.spentYuan,
+      limitYuan: budget.limitYuan,
+      tokens: budget.tokens,
+      tokenLimit: budget.tokenLimit,
+    },
+    memes: {
+      total: memes.length,
+      catalog: memeCounts().catalog,
+    },
+  };
+}
+
+function usageBreakdownState() {
+  const day = localDay();
+  const todayRows = usage.filter((row) => row.day === day);
+  const latest = [...usage].reverse().find((row) => row.breakdown && typeof row.breakdown === 'object');
+  let cacheHit = 0;
+  let cacheMiss = 0;
+  for (const row of todayRows) {
+    cacheHit += Number(row.promptCacheHit) || 0;
+    cacheMiss += Number(row.promptCacheMiss) || 0;
+  }
+  return {
+    latest: latest ? {
+      at: latest.at,
+      model: latest.model,
+      tokensIn: latest.tokensIn,
+      breakdown: latest.breakdown,
+    } : null,
+    today: {
+      breakdown: sumBreakdown(todayRows),
+      cacheHit,
+      cacheMiss,
+      cacheRate: cacheRate(cacheHit, cacheMiss),
+    },
+  };
+}
+
 function memeFilePath(record) {
   return path.join(MEME_DIR, record.file);
 }
@@ -550,19 +616,39 @@ function recentUserPostsBlock() {
   ].join('\n');
 }
 
-function buildSystemPrompt(nowDate = new Date(), profile = loadProfile(), query = '', queryVector = null, memeCatalog = null) {
+function buildPromptBundle(nowDate = new Date(), profile = loadProfile(), query = '', queryVector = null, memeCatalog = null, contextMessages = []) {
   const stablePrefix = buildStableSystemPrefix({
     persona: PERSONA,
     profileText: profileBlock(profile),
   });
-  return buildSystemContent({
+  const memoryText = memoryBlock(query, queryVector);
+  const postsText = recentUserPostsBlock();
+  const catalogText = memeCatalog?.prompt || '';
+  const nowLine = `现在是 ${formatNowLabel(nowDate)}（本地时间）。`;
+  const signatureText = signatureBlock(profile);
+  const prompt = buildSystemContent({
     stablePrefix,
-    memoryText: memoryBlock(query, queryVector),
-    recentPostsText: recentUserPostsBlock(),
-    memeText: memeCatalog?.prompt || '',
-    nowLine: `现在是 ${formatNowLabel(nowDate)}（本地时间）。`,
-    signatureText: signatureBlock(profile),
+    memoryText,
+    recentPostsText: postsText,
+    memeText: catalogText,
+    nowLine,
+    signatureText,
   });
+  const l1 = contextMessages.reduce((sum, message) => sum + estimateTokens(message.content), 0);
+  const breakdown = normalizeBreakdown({
+    stable: estimateTokens(stablePrefix),
+    memory: estimateTokens(memoryText),
+    posts: estimateTokens(postsText),
+    catalog: estimateTokens(catalogText),
+    // 签名每轮变化，归入 time 尾巴；六项总数仍与 prompt 对齐。
+    time: estimateTokens(nowLine) + estimateTokens(signatureText),
+    l1,
+  });
+  return { prompt, breakdown };
+}
+
+function buildSystemPrompt(nowDate = new Date(), profile = loadProfile(), query = '', queryVector = null, memeCatalog = null) {
+  return buildPromptBundle(nowDate, profile, query, queryVector, memeCatalog, []).prompt;
 }
 
 const usage = [];
@@ -1064,9 +1150,11 @@ async function streamModel(onDelta, maxTokens, memeSnapshot = null) {
   const nowDate = new Date();
   const query = messages.at(-1)?.role === 'user' ? messages.at(-1).text : '';
   const queryVector = await embedQuery(query, estimateInputTokens(query));
+  const contextMessages = buildContextMessages(nowDate);
+  const promptBundle = buildPromptBundle(nowDate, loadProfile(), query, queryVector, memeSnapshot, contextMessages);
   const messagesOut = [
-    { role: 'system', content: buildSystemPrompt(nowDate, loadProfile(), query, queryVector, memeSnapshot) },
-    ...buildContextMessages(nowDate),
+    { role: 'system', content: promptBundle.prompt },
+    ...contextMessages,
   ];
   if (process.env.DEBUG_PROMPT) {
     console.log(`[prompt] count=${messagesOut.length}`);
@@ -1119,7 +1207,7 @@ async function streamModel(onDelta, maxTokens, memeSnapshot = null) {
       }
     }
     lastConnectionTest = { ok: true, at: nowIso() };
-    return { text, usage };
+    return { text, usage, breakdown: promptBundle.breakdown };
   } finally {
     clearTimeout(timer);
   }
@@ -1340,6 +1428,7 @@ async function streamReply(res, userMsg, tokensIn) {
   };
 
   let usage = null;
+  let breakdown = null;
   let reply = '';
 
   if (isMockMode()) {
@@ -1371,6 +1460,7 @@ async function streamReply(res, userMsg, tokensIn) {
         queue.push(piece);
       }, maxTokens, memeSnapshot);
       usage = out.usage || null;
+      breakdown = out.breakdown || null;
     } catch (err) {
       streamingDone = true;
       await consumer.catch(() => {});
@@ -1431,6 +1521,7 @@ async function streamReply(res, userMsg, tokensIn) {
     tokensOut,
     estimated: !usage,
     costYuan: costOf(tokensInFinal, tokensOut),
+    ...(breakdown ? { breakdown } : {}),
     ...(Number.isFinite(Number(cacheHitRaw)) ? { promptCacheHit: Number(cacheHitRaw) } : {}),
     ...(Number.isFinite(Number(cacheMissRaw)) ? { promptCacheMiss: Number(cacheMissRaw) } : {}),
     userMsgId: userMsg.id,
@@ -1761,6 +1852,14 @@ const server = http.createServer(async (req, res) => {
   try {
     // 所有 API 都要口令；静态页和图标保持公开（不含数据）。
     if (url.pathname.startsWith('/api/') && !checkAuth(req, res)) return;
+
+    if (url.pathname === '/api/status' && req.method === 'GET') {
+      return sendJson(res, 200, statusPayload());
+    }
+
+    if (url.pathname === '/api/usage/breakdown' && req.method === 'GET') {
+      return sendJson(res, 200, usageBreakdownState());
+    }
 
     if (url.pathname === '/api/health') {
       return sendJson(res, 200, {

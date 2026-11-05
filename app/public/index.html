@@ -172,6 +172,14 @@
         <div class="usage-track"><i id="usageBar"></i></div>
         <div id="usageNote" class="side-msg">根据模型返回的 token 用量记账；缺少用量时会标记估算。</div>
         <button id="budgetResetBtn" class="ghost compact" type="button" hidden>恢复今日限额</button>
+        <div id="usageBreakdown" class="usage-breakdown"></div>
+      </section>
+
+      <section id="statusSection" class="console-section">
+        <div class="section-title"><b>运行状态</b><span id="statusVersionLine" class="muted">读取中…</span></div>
+        <p id="statusUpdateHint" class="side-msg" hidden>新版本已准备好，点此更新</p>
+        <button id="statusUpdateBtn" class="ghost compact" type="button" hidden>更新</button>
+        <div id="statusDetails" class="status-details"></div>
       </section>
 
       <section class="console-section memory-console">

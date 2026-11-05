@@ -43,6 +43,11 @@ const usageCalls = document.getElementById('usageCalls');
 const usageLimit = document.getElementById('usageLimit');
 const usageBar = document.getElementById('usageBar');
 const usageNote = document.getElementById('usageNote');
+const usageBreakdown = document.getElementById('usageBreakdown');
+const statusVersionLine = document.getElementById('statusVersionLine');
+const statusUpdateHint = document.getElementById('statusUpdateHint');
+const statusUpdateBtn = document.getElementById('statusUpdateBtn');
+const statusDetails = document.getElementById('statusDetails');
 const budgetResetBtn = document.getElementById('budgetResetBtn');
 const budgetDialog = document.getElementById('budgetDialog');
 const budgetDialogText = document.getElementById('budgetDialogText');
@@ -808,6 +813,109 @@ function showConsoleUsage(budget) {
   budgetResetBtn.hidden = budget.override !== 'day';
 }
 
+const BREAKDOWN_LABELS = {
+  stable: '稳定前缀',
+  memory: '记忆',
+  posts: '动态',
+  catalog: '表情目录',
+  time: '时间/签名',
+  l1: 'L1 上下文',
+};
+
+function renderBreakdownBlock(container, breakdown, title) {
+  container.appendChild(el('div', 'usage-breakdown-title', title));
+  const total = Number(breakdown?.total) || 0;
+  for (const key of ['stable', 'memory', 'posts', 'catalog', 'time', 'l1']) {
+    const value = Number(breakdown?.[key]) || 0;
+    const percent = total > 0 ? Math.round(value / total * 100) : 0;
+    container.appendChild(el('div', 'usage-breakdown-row', `${BREAKDOWN_LABELS[key]} ${value.toLocaleString('zh-CN')} token · ${percent}%`));
+  }
+  container.appendChild(el('div', 'usage-breakdown-row total', `合计 ${total.toLocaleString('zh-CN')} token`));
+}
+
+function renderUsageBreakdown(data) {
+  usageBreakdown.textContent = '';
+  if (!data?.latest && !(data?.today?.breakdown?.total > 0)) {
+    usageBreakdown.textContent = '还没有带费用拆解的聊天记录。';
+    return;
+  }
+  if (data.latest) {
+    renderBreakdownBlock(usageBreakdown, data.latest.breakdown, `最近一轮 · ${data.latest.tokensIn || 0} input token`);
+  }
+  if (data.today) {
+    renderBreakdownBlock(usageBreakdown, data.today.breakdown, '今日累计（估算）');
+    const hit = Number(data.today.cacheHit) || 0;
+    const miss = Number(data.today.cacheMiss) || 0;
+    const rate = data.today.cacheRate == null ? '—' : `${Math.round(Number(data.today.cacheRate) * 100)}%`;
+    usageBreakdown.appendChild(el('div', 'usage-breakdown-row', `今日缓存命中率 ${rate}（hit ${hit.toLocaleString('zh-CN')} / miss ${miss.toLocaleString('zh-CN')}）`));
+  }
+}
+
+async function localSwVersion() {
+  try {
+    if (!globalThis.caches?.keys) return '';
+    const keys = await caches.keys();
+    return keys.find((key) => key.startsWith('companion-v')) || '';
+  } catch { return ''; }
+}
+
+function renderStatus(status, localSw) {
+  if (!status) {
+    statusVersionLine.textContent = '读取失败';
+    return;
+  }
+  statusVersionLine.textContent = `${status.productVersion} · SW ${status.swVersion}`;
+  const hasController = Boolean(globalThis.navigator?.serviceWorker?.controller);
+  const mismatched = Boolean(localSw && status.swVersion && localSw !== status.swVersion && hasController);
+  statusUpdateHint.hidden = !mismatched;
+  statusUpdateBtn.hidden = !mismatched;
+  statusDetails.textContent = '';
+  const rows = [
+    ['产品版本', status.productVersion],
+    ['SW 版本', status.swVersion],
+    ['数据 schema', `v${status.schemaVersion}`],
+    ['模型', status.model || '—'],
+    ['API 主机', status.baseUrlHost || '—'],
+    ['今日预算', `¥${Number(status.budget?.spentYuan || 0).toFixed(3)} / ¥${Number(status.budget?.limitYuan || 0).toFixed(2)}`],
+    ['已运行', status.uptimeSeconds != null ? `${Math.floor(status.uptimeSeconds / 60)} 分钟` : '—'],
+  ];
+  for (const [label, value] of rows) {
+    const row = el('div', 'status-row');
+    row.appendChild(el('span', 'muted', label));
+    row.appendChild(el('b', '', String(value)));
+    statusDetails.appendChild(row);
+  }
+}
+
+async function loadStatus() {
+  try {
+    const response = await apiFetch('/api/status');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    renderStatus(await response.json(), await localSwVersion());
+  } catch {
+    renderStatus(null, '');
+  }
+}
+
+async function loadUsageBreakdown() {
+  try {
+    const response = await apiFetch('/api/usage/breakdown');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    renderUsageBreakdown(await response.json());
+  } catch {
+    usageBreakdown.textContent = '费用拆解读取失败。';
+  }
+}
+
+statusUpdateBtn.addEventListener('click', () => {
+  // 红线：有未发送输入或流式回复时绝不刷新。
+  if (input.value.trim() || busy || awaitJob) {
+    toast('先把输入发完，或等回复结束再更新');
+    return;
+  }
+  location.href = '/reset.html';
+});
+
 function showBudgetDialog(text, id, budget) {
   pendingBudget = { text, id };
   const spent = Number(budget?.spentYuan || 0).toFixed(3);
@@ -1211,6 +1319,7 @@ async function loadConsole() {
   }
   await loadMemory('');
   await loadMemes();
+  await Promise.allSettled([loadStatus(), loadUsageBreakdown()]);
   await refreshBalance();
 }
 

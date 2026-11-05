@@ -913,6 +913,42 @@
 - SW **v39**；真实服务已重启，`catalog 30`、策略默认 100/2/off/1。
 - 观察期：P0 只调顺序，P1 只裁超预算最旧轮次；若风格明显变化，先查 P1 截断。
 
+## 版本号显示 + P2 费用归因 — 2026-11-05（v40）
+
+### 版本三分离
+
+- 产品版本 `0.2.40`（`app/lib/version.mjs`）：`0` = 未公开发布，`2` = V2 阶段，`40` = 本阶段第 40 次改版；规则为 phase 升 minor、普通改版升 patch。
+- SW 版本 `companion-v40-2026-11-05`（`app/public/sw.js`）；服务端每次请求 `/api/status` 时读取 `sw.js` 的 `VERSION`，不缓存旧值。
+- 数据 schema 仍为 `1`（`SCHEMA`）。
+- 新增 `GET /api/status`：产品/SW/schema、模型、baseUrl 主机（不含 key/路径）、启动时间/uptime、预算、表情计数。
+- 终端新增「运行状态」：短行产品+SW、完整详情；SW 不一致且页面有 controller 时显示“新版本已准备好，点此更新”。
+- 更新红线：输入框有未发送文字、或流式回复中，点击只提示，不刷新、不丢输入；空闲时走 `reset.html`。
+
+### P2 费用归因
+
+- `app/lib/usage.mjs`：六项 `stable/memory/posts/catalog/time/l1` + `total`，空块记 0；`sumBreakdown`、`cacheRate`。
+- `app/server.mjs buildPromptBundle`：一次构建 prompt 时同步算六项；`time` 包含时间行 + 当轮签名，`l1` 为实际截断后的上下文；`streamModel` 返回 breakdown，`streamReply` 写入 usage。
+- 新增 `GET /api/usage/breakdown`：最近一轮 breakdown + 今日汇总 + 缓存命中率。
+- 终端「本地用量」下方显示最近一轮各块 token/占比、今日累计、今日缓存命中率；不改调用逻辑/预算护栏。
+
+### 验收
+
+- `status-test.mjs` **11/11**：产品版本、SW 与 sw.js 一致、schema、baseUrl 仅 host、无 key、预算/uptime/表情计数。
+- `usage-breakdown-test.mjs` **6/6**：六项和=total、空 catalog=0、汇总、缓存率。
+- `dom-smoke` **64/64**：终端显示产品/SW、运行详情、费用空状态。
+- 一轮临时真回复：
+  - `tokensIn=424`
+  - `breakdown={stable:469,memory:0,posts:0,catalog:0,time:18,l1:13,total:500}`
+  - 估算 total 比 tokensIn 高 **17.9%**，在 ±20% 内；catalog 0 因临时库为空。
+  - 该轮 `promptCacheHit=256`、`promptCacheMiss=168`。
+- `/api/status` 实测（脱敏）：`productVersion=0.2.40`、`swVersion=companion-v40-2026-11-05`、`schemaVersion=1`、`model=deepseek-flash`、`baseUrlHost=api.deepseek.com`。
+- 回归：`meme-chat-test` 20/20、`meme-strategy-test` 16/16、`meme-test` 31/31、`reply-test` 16/16、P0 8/8、P1 7/7。
+
+### 版本
+
+- 产品 **0.2.40**；SW **v40**；schema **1**。
+
+
 
 
 

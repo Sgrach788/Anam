@@ -135,7 +135,7 @@ const ids = [
   'toast', 'composer', 'copybar', 'copyBtn', 'settingsBtn', 'sidebar', 'sideClose', 'sideMask',
   'consoleOpen', 'consolePanel', 'consoleClose', 'consoleCloseIcon', 'apiKeyInput', 'apiSaveBtn', 'apiClearBtn', 'apiTestBtn', 'apiSettingsMsg',
   'apiModeBadge', 'apiModel', 'apiKeyState', 'balanceRefresh', 'balanceValue', 'balanceStatus',
-  'usageDay', 'usageSpend', 'usageTokens', 'usageCalls', 'usageLimit', 'usageBar', 'usageNote',
+  'usageDay', 'usageSpend', 'usageTokens', 'usageCalls', 'usageLimit', 'usageBar', 'usageNote', 'usageBreakdown', 'statusVersionLine', 'statusUpdateHint', 'statusUpdateBtn', 'statusDetails',
   'previewV1', 'previewV2', 'previewV3', 'previewV4',
   'previewList', 'previewBtn',
   'appName', 'headerAvatar', 'avatarPreview', 'pAvatarFile', 'avatarClear', 'pAiName', 'pCallUser', 'pSignature',
@@ -281,8 +281,12 @@ await sleep(200);
 check('本机资料保存独立于 AI 资料', byId.get('userName').textContent === '本机昵称' && (await (await fetch(BASE + '/api/profile')).json()).profile.name === 'Anam');
 
 byId.get('tabConsole').trigger('click');
-await sleep(450);
+await sleep(1000);
 check('控制台可打开', byId.get('consolePanel').hidden === false);
+check('终端显示产品与 SW 版本', byId.get('statusVersionLine').textContent.includes('0.2.40')
+  && byId.get('statusVersionLine').textContent.includes('companion-v'), byId.get('statusVersionLine').textContent);
+check('终端运行详情含三版本', byId.get('statusDetails').children.length >= 3);
+check('无费用拆解时明确提示', byId.get('usageBreakdown').textContent.includes('还没有带费用拆解'), byId.get('usageBreakdown').textContent);
 check('终端显示表情发送策略', byId.get('memeProbability').value === '100'
   && byId.get('memeMinGap').value === '2'
   && byId.get('memeSoftFrequency').checked === false

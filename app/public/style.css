@@ -1121,3 +1121,12 @@ html {
 .meme-strategy-row input[type=range] { flex: 1; min-width: 120px; accent-color: var(--accent); }
 .meme-strategy-row input[type=number] { width: 58px; min-height: 36px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--text); font: inherit; }
 .meme-strategy-row output { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* 终端：费用拆解与运行状态 */
+.usage-breakdown { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 12px; color: var(--dim); }
+.usage-breakdown-title { margin-top: 4px; color: var(--text); font-size: 12px; }
+.usage-breakdown-row { line-height: 1.45; }
+.usage-breakdown-row.total { color: var(--text); }
+.status-details { display: grid; gap: 4px; margin-top: 8px; font-size: 13px; }
+.status-row { display: flex; justify-content: space-between; gap: 12px; }
+.status-row b { text-align: right; font-weight: 500; overflow-wrap: anywhere; }

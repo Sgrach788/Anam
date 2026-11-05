@@ -1,7 +1,7 @@
 ﻿# Companion — 使用说明
 
 > 只属于你的私密 AI 伴侣。决策以 `DECISIONS.md` 为准；`roadmap.md` 是历史，不要照着做。
-> 当前版本：V1「有过去」已完成（2026-11-03）；V2「表情包」Phase 1（库/审核/取图/备份）与 Phase 2A（AI 选图发送）已完成；Phase 2B（你手动发表情/图片）待批准。插件能力按原生功能分阶段转化，不连接 AstrBot 或 QQ。
+> 当前版本：产品 **0.2.40**（0 = 未公开发布，2 = V2，40 = 本阶段第 40 次改版）；V1「有过去」已完成（2026-11-03）；V2「表情包」Phase 1（库/审核/取图/备份）与 Phase 2A（AI 选图发送）已完成；Phase 2B（你手动发表情/图片）待批准。插件能力按原生功能分阶段转化，不连接 AstrBot 或 QQ。
 
 ---
 
@@ -153,6 +153,8 @@ node tools\meme-chat-test.mjs # V2 Phase 2A：目录注入、AI 选图、无效 
 node tools\meme-strategy-test.mjs # 发送策略：0/100/25 骰子、间隔、软提示
 node tools\prompt-cache-test.mjs # P0：稳定前缀不随记忆/时间/目录变化
 node tools\l1-context-test.mjs # P1：L1 3000 token 预算与最新一轮保底
+node tools\status-test.mjs # v40：/api/status 三版本号与脱敏
+node tools\usage-breakdown-test.mjs # P2：费用拆解六项/汇总/缓存率
 ```
 
 真模型实测脚本：`tools\live-20.mjs`、`tools\live-extra.mjs`（会花钱）。
