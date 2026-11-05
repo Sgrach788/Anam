@@ -948,6 +948,60 @@
 
 - 产品 **0.2.40**；SW **v40**；schema **1**。
 
+## 聊天三处体验 + 终端折叠 — 2026-11-05（v41）
+
+仅前端改动；未改聊天、表情、记忆、预算服务端逻辑。表情目录 30→50 与新增 6 张入库仍推迟到 2a 观察期结束。
+
+### 1. 加载更多只在顶部
+
+- `updateLoadOlder()` 改为 `hasOlder && list.scrollTop <= 8`；
+- 复用原有 `list` scroll 监听，同时更新加载更多与回到底部箭头；
+- 原有 `renderAll({preserveScroll})` 位置保持逻辑未改。
+- 实测：底部隐藏；顶部出现；无更早消息隐藏。
+
+### 2. 一键到底箭头
+
+- 聊天页新增 `#jumpBottom`，悬浮在输入框上方；
+- 显示条件 `!stickToBottom && distanceToBottom() > list.clientHeight`；
+- 点击平滑滚动到底并隐藏；不新增 scroll 监听；
+- 流式追加仍只由 `stickToBottom` 决定是否贴底，用户翻历史不抢位置。
+- 实测：底部/顶部带按钮状态见截图；点击后 `top=12242, jump=false`。
+
+### 3. 未读数字气泡
+
+- `#tabChat` 新增 `#tabChatBadge`；localStorage `companion.read.v1` 存最后已读 `seq`；
+- 只计 `role=assistant` 的消息，自己/系统不计；超过 99 显示 `99+`；
+- 切回对话页（inbox/chat）写当前最大 seq 并清空；
+- 为“在空间/控制台收到消息”补了**非对话页的常驻 SSE 订阅**：进入空间/控制台/联系人/资料页时启动，回对话页时关闭；收到消息仍走现有 `handleFrame`。
+- 实测：空间页收到 18 条实际助手消息（mock 每次回复拆成多条）显示 18；点回对话后清空，`companion.read.v1` 写入当前 seq。
+- 已知边界：PWA 关闭期间无 SSE；仅本机存储。
+
+### 4. 终端折叠
+
+- 终端首页只保留 API 与本地用量两张常驻卡片；余额收起；
+- 新增目录行：表情包管理 / 记忆管理 / 备份与恢复 / 数据与存储 / 运行状态 / 高级维护，各带状态；
+- 子页面用 hash：`#/terminal/memes` 等；返回 `#/terminal`；不新增主页面；
+- 重内容延迟：表情网格只在表情子页面渲染，记忆图只在记忆子页面加载；目录只取计数；
+- 关闭再打开终端保留当前 hash 子页面；
+- 备份/数据/高级维护为只读概览，不新增恢复/删除操作。
+- 实测：`#/terminal/memes` → API/usage/balance 均隐藏，meme 显示，返回目录恢复。
+
+### 验收
+
+- 移动视口截图保存在 `D:\Companion\v41-evidence\`：
+  - `01-load-older-at-top.png`
+  - `02-jump-bottom.png`
+  - `03-chat-bottom-no-buttons.png`
+  - `04-unread-badge.png`
+  - `05-unread-cleared.png`
+  - `06-terminal-directory.png`
+  - `07-terminal-memes.png`
+  - `08-terminal-cost.png`
+- 说明：截图来自 Chrome 390×844 移动视口，不是实体手机录屏。
+- `dom-smoke` **64/64**；`status-test` 11/11；`prompt-cache-test` 8/8；`l1-context-test` 7/7；`meme-chat-test` 20/20；`meme-strategy-test` 16/16；`usage-breakdown-test` 6/6；`reply-test` 16/16。
+- 产品 **0.2.41**；SW **v41**；schema **1**。
+
+
 
 
 

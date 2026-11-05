@@ -7,6 +7,8 @@ import { prepareMemeImage, prepareMemePreview } from './meme-image.js';
 
 const list = document.getElementById('list');
 const loadOlder = document.getElementById('loadOlder');
+const jumpBottom = document.getElementById('jumpBottom');
+const tabChatBadge = document.getElementById('tabChatBadge');
 const appEl = document.getElementById('app');
 const input = document.getElementById('input');
 const sendBtn = document.getElementById('send');
@@ -25,6 +27,28 @@ const profilePageBasics = document.getElementById('profilePageBasics');
 const consolePanel = document.getElementById('consolePanel');
 const consoleClose = document.getElementById('consoleClose');
 const consoleCloseIcon = document.getElementById('consoleCloseIcon');
+const terminalDirectory = document.getElementById('terminalDirectory');
+const terminalBack = document.getElementById('terminalBack');
+const apiSection = document.getElementById('apiSection');
+const usageSection = document.getElementById('usageSection');
+const balanceSection = document.getElementById('balanceSection');
+const statusSection = document.getElementById('statusSection');
+const memorySection = document.getElementById('memorySection');
+const memeSection = document.getElementById('memeSection');
+const backupSection = document.getElementById('backupSection');
+const dataSection = document.getElementById('dataSection');
+const advancedSection = document.getElementById('advancedSection');
+const futureSection = document.getElementById('futureSection');
+const rowMemes = document.getElementById('rowMemes');
+const rowMemory = document.getElementById('rowMemory');
+const rowBackup = document.getElementById('rowBackup');
+const rowData = document.getElementById('rowData');
+const rowStatus = document.getElementById('rowStatus');
+const rowAdvanced = document.getElementById('rowAdvanced');
+const apiHost = document.getElementById('apiHost');
+const backupInfo = document.getElementById('backupInfo');
+const dataInfo = document.getElementById('dataInfo');
+const advancedInfo = document.getElementById('advancedInfo');
 const apiKeyInput = document.getElementById('apiKeyInput');
 const apiSaveBtn = document.getElementById('apiSaveBtn');
 const apiClearBtn = document.getElementById('apiClearBtn');
@@ -138,6 +162,10 @@ let memeEnabled = true;
 let memeDeleteTarget = null;
 let memeStrategyTimer = null;
 let memeStrategyDraft = {};
+let terminalModule = '';
+let lastHealth = null;
+let lastStatus = null;
+let lastMemeCounts = null;
 const memePreviewUrls = new Map();
 const memeOriginalUrls = new Map();
 const memePreviewInflight = new Map();
@@ -156,6 +184,10 @@ const discardApply = document.getElementById('discardApply');
 let mobilePersonaPage = false;
 let profilePageOriginal = '';
 let activeView = 'inbox';
+let lastReadSeq = 0;
+let readInitialized = false;
+let unreadEvents = null;
+const READ_KEY = 'companion.read.v1';
 let profileReturnView = 'chat';
 let localUserAvatar = '';
 const panelDone = document.getElementById('panelDone');
@@ -230,10 +262,88 @@ function rememberMessage(message) {
 }
 
 function updateLoadOlder() {
-  loadOlder.hidden = !hasOlder;
+  // 只有真的还有更早消息、并且已经拉到顶部时才出现；8px 容差防小数抖动。
+  loadOlder.hidden = !(hasOlder && list.scrollTop <= 8);
   loadOlder.disabled = loadingOlder;
   loadOlder.textContent = loadingOlder ? '加载中…' : '加载更早';
 }
+
+function maxLoadedSeq() {
+  return loadedMessages.reduce((max, message) => Math.max(max, Number(message.seq) || 0), 0);
+}
+
+function initReadMarker() {
+  try {
+    const raw = localStorage.getItem(READ_KEY);
+    const saved = Number(raw);
+    lastReadSeq = Number.isFinite(saved) && saved > 0 ? saved : maxLoadedSeq();
+  } catch {
+    lastReadSeq = maxLoadedSeq();
+  }
+  readInitialized = true;
+  if (activeView === 'inbox' || activeView === 'chat') markChatRead();
+  else updateUnreadBadge();
+}
+
+function markChatRead() {
+  const max = maxLoadedSeq();
+  if (max > lastReadSeq) {
+    lastReadSeq = max;
+    try { localStorage.setItem(READ_KEY, String(lastReadSeq)); } catch { /* ignore */ }
+  }
+  updateUnreadBadge();
+}
+
+function updateUnreadBadge() {
+  if (!readInitialized) {
+    tabChatBadge.hidden = true;
+    return;
+  }
+  const count = (activeView === 'inbox' || activeView === 'chat')
+    ? 0
+    : loadedMessages.filter((message) => message.role === 'assistant' && Number(message.seq) > lastReadSeq).length;
+  tabChatBadge.hidden = count <= 0;
+  tabChatBadge.textContent = count > 99 ? '99+' : String(count);
+}
+
+function stopUnreadEvents() {
+  if (unreadEvents) {
+    unreadEvents.abort();
+    unreadEvents = null;
+  }
+}
+
+// 不在对话页时保持一条 SSE 订阅，收到她的新消息就走现有 handleFrame 路径。
+async function startUnreadEvents() {
+  if (unreadEvents || activeView === 'inbox' || activeView === 'chat') return;
+  const ac = new AbortController();
+  unreadEvents = ac;
+  while (!ac.signal.aborted) {
+    try {
+      const res = await openEvents(lastFrameId, bootId, ac.signal);
+      if (res.status === 401) {
+        lockOut('登录已失效，请重新输入口令。');
+        break;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await readSse(res, handleFrame);
+    } catch { /* 断线重连 */ }
+    if (ac.signal.aborted) break;
+    await sleep(2500);
+  }
+  if (unreadEvents === ac) unreadEvents = null;
+}
+
+function updateJumpBottom() {
+  jumpBottom.hidden = !(!stickToBottom && distanceToBottom() > list.clientHeight);
+}
+
+jumpBottom.addEventListener('click', () => {
+  if (typeof list.scrollTo === 'function') list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
+  else scrollToBottom();
+  stickToBottom = true;
+  updateJumpBottom();
+});
 
 // ---------- 小工具 ----------
 const el = (tag, cls, text) => {
@@ -294,6 +404,8 @@ function scrollToBottom() {
 
 list.addEventListener('scroll', () => {
   stickToBottom = distanceToBottom() < 120;
+  updateLoadOlder();
+  updateJumpBottom();
 }, { passive: true });
 
 // requestAnimationFrame 合并滚动；贴底时连续两帧校正（输入框高度、键盘收缩会晚一帧生效）
@@ -643,6 +755,8 @@ function renderAll(messages, { preserveScroll = false } = {}) {
     stickToBottom = true;
     scheduleScroll(true);
   }
+  updateLoadOlder();
+  updateJumpBottom();
   markRendered();
 }
 
@@ -864,6 +978,8 @@ function renderStatus(status, localSw) {
     statusVersionLine.textContent = '读取失败';
     return;
   }
+  lastStatus = status;
+  apiHost.textContent = status.baseUrlHost || '—';
   statusVersionLine.textContent = `${status.productVersion} · SW ${status.swVersion}`;
   const hasController = Boolean(globalThis.navigator?.serviceWorker?.controller);
   const mismatched = Boolean(localSw && status.swVersion && localSw !== status.swVersion && hasController);
@@ -885,6 +1001,7 @@ function renderStatus(status, localSw) {
     row.appendChild(el('b', '', String(value)));
     statusDetails.appendChild(row);
   }
+  renderTerminalDirectory();
 }
 
 async function loadStatus() {
@@ -914,6 +1031,111 @@ statusUpdateBtn.addEventListener('click', () => {
     return;
   }
   location.href = '/reset.html';
+});
+
+const TERMINAL_MODULES = ['memes', 'memory', 'backup', 'data', 'status', 'advanced'];
+
+function currentTerminalModule() {
+  const hash = typeof location !== 'undefined' ? (location.hash || '') : '';
+  const match = /^#\/terminal\/([a-z]+)$/u.exec(hash);
+  return match && TERMINAL_MODULES.includes(match[1]) ? match[1] : '';
+}
+
+function todayLabel() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function renderTerminalDirectory() {
+  const health = lastHealth;
+  const status = lastStatus;
+  rowMemes.textContent = lastMemeCounts
+    ? `${lastMemeCounts.total} 张 · 目录 ${lastMemeCounts.catalog}/30${lastMemeCounts.pending ? ` · 待审 ${lastMemeCounts.pending}` : ''}`
+    : '读取中…';
+  rowMemory.textContent = health ? `${Number(health.memoryFacts) || 0} 条事实 · ${Number(health.memorySummaries) || 0} 摘要` : '读取中…';
+  rowBackup.textContent = health?.backup
+    ? `最近备份 ${health.backup === todayLabel() ? '今天' : health.backup}`
+    : '尚未备份';
+  rowData.textContent = health ? `${Number(health.messages) || 0} 条消息` : '读取中…';
+  rowStatus.textContent = status ? `${status.productVersion} · ${String(status.swVersion).replace(/^companion-(v\d+).*/u, '$1')}` : '读取中…';
+  rowAdvanced.textContent = status ? `schema v${status.schemaVersion} · ${Math.floor((Number(status.uptimeSeconds) || 0) / 60)} 分钟` : '读取中…';
+}
+
+function simpleRows(container, rows) {
+  container.textContent = '';
+  for (const [label, value] of rows) {
+    const row = el('div', 'status-row');
+    row.appendChild(el('span', 'muted', label));
+    row.appendChild(el('b', '', String(value)));
+    container.appendChild(row);
+  }
+}
+
+function renderTerminalPages() {
+  const health = lastHealth;
+  const status = lastStatus;
+  simpleRows(backupInfo, [
+    ['最近备份', health?.backup ? (health.backup === todayLabel() ? `今天 · ${health.backup}` : health.backup) : '尚未备份'],
+    ['保留策略', '最近 7 天'],
+    ['备份范围', '聊天、记忆、表情与配置（不含密钥）'],
+  ]);
+  simpleRows(dataInfo, [
+    ['聊天消息', `${Number(health?.messages) || 0} 条`],
+    ['长期记忆', `${Number(health?.memoryFacts) || 0} 条事实 · ${Number(health?.memorySummaries) || 0} 条摘要`],
+    ['本机缓存', (() => { try { const raw = localStorage.getItem(MSG_CACHE_KEY); return raw ? `${JSON.parse(raw).messages?.length || 0} 条消息` : '无'; } catch { return '无'; } })()],
+    ['数据目录', 'app/data（仅电脑端）'],
+  ]);
+  simpleRows(advancedInfo, [
+    ['产品版本', status?.productVersion || '—'],
+    ['SW 版本', status?.swVersion || '—'],
+    ['数据 schema', status ? `v${status.schemaVersion}` : '—'],
+    ['已运行', status ? `${Math.floor((Number(status.uptimeSeconds) || 0) / 60)} 分钟` : '—'],
+  ]);
+}
+
+async function loadTerminalModule(module) {
+  if (module === 'memes') await loadMemes({ render: true });
+  else if (module === 'memory') await loadMemory('');
+  else if (module === 'status') await loadStatus();
+  else renderTerminalPages();
+}
+
+function showTerminalModule(module) {
+  terminalModule = module;
+  const subpage = Boolean(module);
+  terminalDirectory.hidden = subpage;
+  terminalBack.hidden = !subpage;
+  apiSection.hidden = subpage;
+  usageSection.hidden = subpage;
+  balanceSection.hidden = true;
+  statusSection.hidden = !subpage || module !== 'status';
+  memorySection.hidden = !subpage || module !== 'memory';
+  memeSection.hidden = !subpage || module !== 'memes';
+  backupSection.hidden = !subpage || module !== 'backup';
+  dataSection.hidden = !subpage || module !== 'data';
+  advancedSection.hidden = !subpage || module !== 'advanced';
+  futureSection.hidden = module !== 'advanced';
+  renderTerminalDirectory();
+  if (subpage) void loadTerminalModule(module);
+}
+
+function handleTerminalHash() {
+  if (consolePanel.hidden) return;
+  showTerminalModule(currentTerminalModule());
+}
+
+terminalBack.addEventListener('click', () => {
+  if (location.hash) location.hash = '#/terminal';
+  else handleTerminalHash();
+});
+window.addEventListener('hashchange', () => {
+  if (!consolePanel.hidden) handleTerminalHash();
+});
+document.querySelectorAll('[data-terminal]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const module = button.dataset.terminal;
+    if (TERMINAL_MODULES.includes(module)) location.hash = `#/terminal/${module}`;
+  });
 });
 
 function showBudgetDialog(text, id, budget) {
@@ -1175,6 +1397,13 @@ async function loadSpace() {
 const rootViews = { inbox: inboxView, chat: chatView, contacts: contactsView, space: spaceView, 'ai-profile': aiProfileView, 'user-profile': userProfileView };
 function switchMainView(view, { keepScroll = false } = {}) {
   activeView = view;
+  if (view === 'inbox' || view === 'chat') {
+    stopUnreadEvents();
+    markChatRead();
+  } else {
+    updateUnreadBadge();
+    void startUnreadEvents();
+  }
   // 离开聊天页时取消尚未执行的贴底滚动，避免它晚一帧把阅读位置冲掉
   if (view !== 'chat') {
     stickToBottom = false;
@@ -1315,12 +1544,12 @@ async function loadConsole() {
   }
   if (healthResult.status === 'fulfilled' && healthResult.value.ok) {
     const health = await healthResult.value.json();
+    lastHealth = health;
     showConsoleUsage(health.budget);
   }
-  await loadMemory('');
-  await loadMemes();
-  await Promise.allSettled([loadStatus(), loadUsageBreakdown()]);
+  await Promise.allSettled([loadStatus(), loadUsageBreakdown(), loadMemes({ render: false })]);
   await refreshBalance();
+  handleTerminalHash();
 }
 
 embeddingSaveBtn.addEventListener('click', () => saveEmbeddingSettings(false));
@@ -1442,6 +1671,8 @@ function updateMemeSummary(counts, enabled) {
   if (counts) {
     memeCounts.textContent = `全库 ${counts.total}/100 · 合格 ${counts.qualified} · 目录 ${counts.catalog}/30 · 等待 ${counts.waiting}`;
     memeEntryCounts.textContent = `共 ${counts.total} 张 · 已启用 ${counts.enabled} 张${counts.pending ? ` · 待审核 ${counts.pending}` : ''}`;
+    lastMemeCounts = counts;
+    renderTerminalDirectory();
   }
   memeEnabled = Boolean(enabled);
   memeState.textContent = `总开关：${memeEnabled ? '已在 AI 资料开启' : '已在 AI 资料关闭（AI 暂不发表情）'}`;
@@ -1493,7 +1724,7 @@ function scheduleMemeStrategy(patch) {
   }, 300);
 }
 
-async function loadMemes() {
+async function loadMemes({ render = null } = {}) {
   try {
     const response = await apiFetch('/api/memes');
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -1501,7 +1732,8 @@ async function loadMemes() {
     memeList = data.memes || [];
     updateMemeSummary(data.counts, data.enabled !== false);
     updateMemeStrategy(data.strategy, data.stats);
-    if (!consolePanel.hidden) renderMemeGrid();
+    const shouldRender = render == null ? terminalModule === 'memes' : render;
+    if (!consolePanel.hidden && shouldRender) renderMemeGrid();
   } catch (err) {
     memeMsg.textContent = `表情包读取失败：${err.message}`;
   }
@@ -2077,12 +2309,17 @@ function handleFrame({ event, data, id }) {
     renderAll(loadedMessages);
     updateLoadOlder();
     writeMessageCache();
+    if (!readInitialized) initReadMarker();
+    else if (activeView === 'inbox' || activeView === 'chat') markChatRead();
+    else updateUnreadBadge();
   } else if (event === 'user') {
     addMessageBubble(data);
     rememberMessage(data);
   } else if (event === 'message') {
     addMessageBubble(data);
     rememberMessage(data);
+    if (activeView === 'inbox' || activeView === 'chat') markChatRead();
+    else updateUnreadBadge();
   } else if (event === 'done') {
     if (data.jobId === awaitJob) { awaitJob = null; loadHeaderProfile(); }
   } else if (event === 'budget') {
@@ -2275,6 +2512,7 @@ async function boot() {
     renderAll(loadedMessages);
     updateLoadOlder();
     writeMessageCache();
+    initReadMarker();
     await loadHeaderProfile();
     try {
       const userResponse = await apiFetch('/api/user-profile');

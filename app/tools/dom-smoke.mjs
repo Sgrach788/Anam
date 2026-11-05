@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { PRODUCT_VERSION } from '../lib/version.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 8907;
@@ -131,11 +132,13 @@ class FakeEl {
 
 const byId = new Map();
 const ids = [
-  'app', 'list', 'loadOlder', 'input', 'send', 'statusDot', 'statusText', 'budgetText', 'budgetDialog', 'budgetDialogText', 'budgetCancel', 'budgetContinue', 'budgetResetBtn', 'lock', 'lockInput', 'lockBtn', 'lockErr',
+  'app', 'list', 'loadOlder', 'jumpBottom', 'input', 'send', 'statusDot', 'statusText', 'budgetText', 'budgetDialog', 'budgetDialogText', 'budgetCancel', 'budgetContinue', 'budgetResetBtn', 'lock', 'lockInput', 'lockBtn', 'lockErr',
   'toast', 'composer', 'copybar', 'copyBtn', 'settingsBtn', 'sidebar', 'sideClose', 'sideMask',
   'consoleOpen', 'consolePanel', 'consoleClose', 'consoleCloseIcon', 'apiKeyInput', 'apiSaveBtn', 'apiClearBtn', 'apiTestBtn', 'apiSettingsMsg',
-  'apiModeBadge', 'apiModel', 'apiKeyState', 'balanceRefresh', 'balanceValue', 'balanceStatus',
+  'apiModeBadge', 'apiModel', 'apiKeyState', 'apiHost', 'balanceRefresh', 'balanceValue', 'balanceStatus',
   'usageDay', 'usageSpend', 'usageTokens', 'usageCalls', 'usageLimit', 'usageBar', 'usageNote', 'usageBreakdown', 'statusVersionLine', 'statusUpdateHint', 'statusUpdateBtn', 'statusDetails',
+  'terminalDirectory', 'terminalBack', 'apiSection', 'usageSection', 'balanceSection', 'statusSection', 'memorySection', 'backupSection', 'dataSection', 'advancedSection', 'futureSection',
+  'rowMemes', 'rowMemory', 'rowBackup', 'rowData', 'rowStatus', 'rowAdvanced', 'backupInfo', 'dataInfo', 'advancedInfo',
   'previewV1', 'previewV2', 'previewV3', 'previewV4',
   'previewList', 'previewBtn',
   'appName', 'headerAvatar', 'avatarPreview', 'pAvatarFile', 'avatarClear', 'pAiName', 'pCallUser', 'pSignature',
@@ -143,7 +146,7 @@ const ids = [
   'personaEdit', 'personaPanel', 'panelTitle', 'panelClose', 'panelCloseIcon', 'panelCancel', 'panelDone', 'panelMsg',
   'discardConfirm', 'discardKeep', 'discardApply',
   'ppPersona', 'ppTone', 'ppInitiative', 'ppBoundaries',
-  'aiSignature', 'spaceView', 'tabs', 'tabChat', 'tabSpace', 'spacePostToggle', 'spaceComposer', 'spaceInput', 'spaceCancel', 'spacePosts', 'spaceEmpty', 'spaceSignature', 'emotionChart', 'emotionCaption',
+  'aiSignature', 'spaceView', 'tabs', 'tabChat', 'tabChatBadge', 'tabSpace', 'spacePostToggle', 'spaceComposer', 'spaceInput', 'spaceCancel', 'spacePosts', 'spaceEmpty', 'spaceSignature', 'emotionChart', 'emotionCaption',
   'inboxView', 'chatView', 'contactsView', 'aiProfileView', 'userProfileView', 'tabContacts', 'tabConsole', 'conversationCard', 'conversationSearch', 'inboxAiName', 'inboxAiAvatar', 'inboxPreview', 'inboxTime', 'userAvatar', 'userName', 'userProfileOpen', 'userProfileBack', 'userAvatarPreview', 'userAvatarFile', 'userNameInput', 'userProfileSave', 'aiProfileOpen', 'aiProfileBack', 'chatBack', 'contactAnam', 'addAiPreview', 'infoPersona', 'infoTone', 'infoInitiative', 'infoBoundaries', 'profileAiAvatar', 'profileAiName', 'profileAiSignature',
   'embeddingBaseInput', 'embeddingModelInput', 'embeddingKeyInput', 'embeddingPriceInput', 'embeddingSaveBtn', 'embeddingClearBtn', 'embeddingTestBtn', 'embeddingMsg', 'memoryIndexBtn', 'memorySummarizeBtn', 'memoryStats', 'memorySearchForm', 'memorySearchInput', 'memoryGraph', 'memoryResults', 'summaryOpenBtn', 'summaryPanel', 'summaryBack', 'summaryList',
   'memeCounts', 'memeState', 'memeFile', 'memeMsg', 'memeGrid', 'memeEmpty', 'memeEntry', 'memeEntryCounts', 'memeEnabledToggle', 'memeDeleteDialog', 'memeDeleteText', 'memeDeleteCancel', 'memeDeleteConfirm', 'memeSection',
@@ -283,7 +286,7 @@ check('本机资料保存独立于 AI 资料', byId.get('userName').textContent 
 byId.get('tabConsole').trigger('click');
 await sleep(1000);
 check('控制台可打开', byId.get('consolePanel').hidden === false);
-check('终端显示产品与 SW 版本', byId.get('statusVersionLine').textContent.includes('0.2.40')
+check('终端显示产品与 SW 版本', byId.get('statusVersionLine').textContent.includes(PRODUCT_VERSION)
   && byId.get('statusVersionLine').textContent.includes('companion-v'), byId.get('statusVersionLine').textContent);
 check('终端运行详情含三版本', byId.get('statusDetails').children.length >= 3);
 check('无费用拆解时明确提示', byId.get('usageBreakdown').textContent.includes('还没有带费用拆解'), byId.get('usageBreakdown').textContent);

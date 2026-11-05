@@ -72,6 +72,7 @@
         <div class="sk w72"></div>
       </div>
       </main>
+      <button id="jumpBottom" class="jump-bottom" type="button" aria-label="回到最新消息" hidden>↓</button>
 
     <form id="composer">
       <textarea id="input" rows="1" placeholder="说点什么…" autocomplete="off" enterkeyhint="send"></textarea>
@@ -140,9 +141,22 @@
       </div>
 
       <div class="console-content">
-      <section class="console-section">
+      <button id="terminalBack" class="ghost compact terminal-back" type="button" hidden>‹ 终端</button>
+      <div id="terminalDirectory">
+        <div class="terminal-directory-title">管理目录</div>
+        <div class="terminal-directory-list">
+          <button class="terminal-row" type="button" data-terminal="memes"><span><b>表情包管理</b><small>库、审核、发送策略</small></span><em id="rowMemes">读取中…</em></button>
+          <button class="terminal-row" type="button" data-terminal="memory"><span><b>记忆管理</b><small>长期记忆、摘要、语义检索</small></span><em id="rowMemory">读取中…</em></button>
+          <button class="terminal-row" type="button" data-terminal="backup"><span><b>备份与恢复</b><small>每日自动备份，保留最近 7 天</small></span><em id="rowBackup">读取中…</em></button>
+          <button class="terminal-row" type="button" data-terminal="data"><span><b>数据与存储</b><small>消息、记忆与本地缓存</small></span><em id="rowData">读取中…</em></button>
+          <button class="terminal-row" type="button" data-terminal="status"><span><b>运行状态</b><small>产品、SW、模型与预算</small></span><em id="rowStatus">读取中…</em></button>
+          <button class="terminal-row" type="button" data-terminal="advanced"><span><b>高级维护</b><small>schema、运行时长与重置</small></span><em id="rowAdvanced">读取中…</em></button>
+        </div>
+      </div>
+      <section id="apiSection" class="console-section">
         <div class="section-title"><b>DeepSeek API</b><span id="apiModeBadge" class="status-badge">读取中</span></div>
         <div class="metric-row"><span>当前模型</span><b id="apiModel">—</b></div>
+        <div class="metric-row"><span>API 主机</span><b id="apiHost">—</b></div>
         <div class="metric-row"><span>API Key</span><b id="apiKeyState">—</b></div>
         <label class="field">输入新的 API Key
           <input id="apiKeyInput" type="password" autocomplete="new-password" placeholder="已配置时留空表示不修改" />
@@ -155,13 +169,13 @@
         <div id="apiSettingsMsg" class="side-msg" role="status">Key 只保存在电脑服务端，不会回显到网页。</div>
       </section>
 
-      <section class="console-section">
+      <section id="balanceSection" class="console-section" hidden>
         <div class="section-title"><b>DeepSeek 账户余额</b><button id="balanceRefresh" class="ghost compact" type="button">刷新</button></div>
         <div id="balanceValue" class="balance-value">尚未查询</div>
         <div id="balanceStatus" class="side-msg" role="status">余额属于 API 提供方账户，与 APP 本地用量分开。</div>
       </section>
 
-      <section class="console-section">
+      <section id="usageSection" class="console-section">
         <div class="section-title"><b>本地用量</b><span id="usageDay" class="muted">今天</span></div>
         <div class="metric-grid">
           <div class="metric-card"><small>今日花费</small><b id="usageSpend">—</b></div>
@@ -175,14 +189,14 @@
         <div id="usageBreakdown" class="usage-breakdown"></div>
       </section>
 
-      <section id="statusSection" class="console-section">
+      <section id="statusSection" class="console-section" hidden>
         <div class="section-title"><b>运行状态</b><span id="statusVersionLine" class="muted">读取中…</span></div>
         <p id="statusUpdateHint" class="side-msg" hidden>新版本已准备好，点此更新</p>
         <button id="statusUpdateBtn" class="ghost compact" type="button" hidden>更新</button>
         <div id="statusDetails" class="status-details"></div>
       </section>
 
-      <section class="console-section memory-console">
+      <section id="memorySection" class="console-section memory-console" hidden>
         <div class="section-title"><b>长期记忆</b><span id="memoryStats" class="muted">读取中…</span></div>
         <p class="muted">每 20 轮自动整理一次；点下方按钮整页阅读摘要，详细管理收在折叠项里。</p>
         <div id="memoryGraph" class="memory-graph" role="img" aria-label="有来源依据的记忆关联图"></div>
@@ -212,7 +226,7 @@
         </details>
       </section>
 
-      <section class="console-section meme-console" id="memeSection">
+      <section class="console-section meme-console" id="memeSection" hidden>
         <div class="section-title"><b>表情包</b><span id="memeCounts" class="muted">读取中…</span></div>
         <p class="muted" id="memeState">总开关：读取中…</p>
         <div class="meme-strategy">
@@ -239,13 +253,32 @@
         <div id="memeEmpty" class="muted" hidden>还没有表情包。先上传几张，再填名称、审核和启用。</div>
       </section>
 
-      <section class="console-section">
+      <section id="futureSection" class="console-section" hidden>
         <div class="section-title"><b>后续版本</b><span class="muted">规划中</span></div>
         <div class="preview-grid">
           <button id="previewV2" class="preview-card" type="button" disabled><b>表情包库</b><small>V2 · 库已开放，发送 Phase 2</small></button>
           <button id="previewV3" class="preview-card" type="button" disabled><b>主动对话</b><small>V3 · 会想你</small></button>
           <button id="previewV4" class="preview-card" type="button" disabled><b>多 AI 协作</b><small>V4+ · 之后规划</small></button>
         </div>
+      </section>
+
+      <section id="backupSection" class="console-section" hidden>
+        <div class="section-title"><b>备份与恢复</b><span class="muted">每日自动</span></div>
+        <div id="backupInfo" class="status-details"></div>
+        <p class="muted">备份只读保存在电脑端 `backups/`，保留最近 7 天；恢复由电脑端手动完成，终端不提供一键覆盖。</p>
+      </section>
+
+      <section id="dataSection" class="console-section" hidden>
+        <div class="section-title"><b>数据与存储</b><span class="muted">只读概览</span></div>
+        <div id="dataInfo" class="status-details"></div>
+        <p class="muted">聊天与记忆保存在电脑端 `app/data/`；本机只缓存消息用于快速打开。</p>
+      </section>
+
+      <section id="advancedSection" class="console-section" hidden>
+        <div class="section-title"><b>高级维护</b><span class="muted">谨慎操作</span></div>
+        <div id="advancedInfo" class="status-details"></div>
+        <p class="muted">本地缓存重置会清空 Service Worker 与缓存，不删除聊天记录。正常更新优先使用运行状态里的更新按钮。</p>
+        <a class="ghost compact" href="/reset.html">重置本地缓存</a>
       </section>
       </div>
     </div>
@@ -352,7 +385,7 @@
 
   <!-- 切换栏固定在布局视口底部：键盘弹起时被盖住，不跟着上升 -->
   <nav id="tabs" aria-label="主导航">
-    <button id="tabChat" class="tab active" type="button"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v11H9l-5 3v-14Z"/><path d="M8 10h8M8 13.5h5"/></svg><span>对话</span></button>
+    <button id="tabChat" class="tab active" type="button"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v11H9l-5 3v-14Z"/><path d="M8 10h8M8 13.5h5"/></svg><span>对话</span><span id="tabChatBadge" class="tab-badge" hidden>0</span></button>
     <button id="tabContacts" class="tab" type="button"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.3"/><path d="M5.5 20c.5-3.4 2.7-5.2 6.5-5.2s6 1.8 6.5 5.2"/></svg><span>AI 联系人</span></button>
     <button id="tabSpace" class="tab" type="button"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 14 9l5.5 2-5.5 2-2 5.5-2-5.5-5.5-2L10 9l2-5.5Z"/><path d="m19 16 .9 2.1L22 19l-2.1.9L19 22l-.9-2.1L16 19l2.1-.9L19 16Z"/></svg><span>空间</span></button>
     <button id="tabConsole" class="tab" type="button"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg><span>控制台</span></button>
