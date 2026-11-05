@@ -1062,6 +1062,73 @@
 
 - 产品 **0.2.42**；SW **v42**；schema **1**。
 
+## v43：Token 后三项 + 预算 ¥2 + 速度 + 按钮/徽章 — 2026-11-05
+
+### 1. 预算 ¥2
+
+- `BUDGET_YUAN` 默认 1 → 2，`DAILY_BUDGET_YUAN` 覆盖保留；
+- 实测默认 `limitYuan=2`；设环境变量 `5` 时接口返回 `5`；终端上限显示 `¥2.00`。
+
+### 2. P3 推理 token
+
+- 真模型一轮：`tokensOut=208`，`reasoningTokens=122`，占比 **58.7%**；
+- 已按规则把 `maxTokens` 上限从 800 收到 **500**（下限 256 不变）；
+- `usage.jsonl` 新增 `reasoningTokens` 字段（有值才写）。
+
+### 3. P4 Embedding 按需
+
+- 关键词先检索；只有关键词无命中或明确回忆时才调用 `embedQuery`；
+- 用本地假 embedding + 真模型路径实测三句：
+  - 关键词命中且无回忆：「豆豆今天怎么样」→ **0** 次
+  - 关键词无命中：「今天吃什么」→ **1** 次
+  - 明确回忆：「你还记得豆豆吗」→ **2** 次
+  - 旧逻辑 3 次；本轮 **2 次，省 33%**；
+- 真实配置当前未启用 embedding，因此实际生产 `embedding_query` 仍为 0；逻辑在启用后才付费。
+- `embedding-policy-test` 6/6。
+
+### 4. P5 目录瘦身
+
+- P2 实测：最近一轮 catalog 442 / 4805 = **9.2%**；今日 7,072 / 75,153 = **9.4%**（以接口实测为准）；
+- 目录不是主要成本；砍 30% 仅省总 token 约 3%，且可能降低选图准确度；
+- **本轮不执行目录瘦身**，只报告数据。
+
+### 5. 跳转按钮
+
+- 改为内联 SVG chevron；`display:flex` 居中；位置输入框右上角；
+- 实测按钮 `top=720 bottom=760 left=334 right=374`，输入框 `top=773.8`，`overlap=false`；`align=center justify=center`。
+
+### 6. 回复速度
+
+- 终端 API 卡片新增「回复速度」：慢 1.5× / 正常 1× / 快 0.6×，写入 config；
+- 实测 mock SSE 消息间隔：正常 **1706ms**、慢 **2289ms**、快 **1243ms**；
+- 默认 normal 与改动前一致；只缩放句间停顿。
+
+### 7. 红点数字居中
+
+- `.tab-badge` / `.conversation-badge` 改为 flex 居中、`line-height:1`；
+- 实测空间 tab=4、消息列表行=4；`display:flex align=center justify=center`；个位数/两位数/`99+` 同规则。
+
+### 验收截图
+
+`D:\Companion\v43-evidence\`
+- `01-jump-svg.png`
+- `02-terminal-speed-budget.png`
+- `03-unread-tab.png`
+- `04-inbox-row.png`
+
+说明：Chrome 390×844 移动视口，不是实体手机录屏。
+
+### 测试
+
+- `reply-test` 23/23、`embedding-policy-test` 6/6、`status-test` 12/12、`dom-smoke` 66/66；
+- `prompt-cache-test` 8/8、`l1-context-test` 7/7、`meme-chat-test` 20/20、`meme-strategy-test` 16/16、`usage-breakdown-test` 6/6、`meme-test` 31/31、`v1-integration` 通过。
+
+### 版本
+
+- 产品 **0.2.43**；SW **v43**；schema **1**。
+- 未做：目录 30→50、2b、V3、记忆/表情逻辑改动。
+
+
 
 
 

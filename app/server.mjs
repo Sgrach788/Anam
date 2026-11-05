@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { MAX_PART, findSentenceCut, findCommaCut, partDelay, sanitizeReply } from './lib/reply.mjs';
-import { extractFacts } from './lib/memory.mjs';
+import { MAX_PART, findSentenceCut, findCommaCut, partDelay, sanitizeReply, normalizeReplySpeed, replySpeedMultiplier } from './lib/reply.mjs';
+import { extractFacts, shouldUseSemanticMemory } from './lib/memory.mjs';
 import { cleanSelfPost, cleanSignature, parseAssistantMetadata, retrieveMemories, smoothEmotion, validateSummaryClaims, validateSummaryRelations } from './lib/v1.mjs';
 import { buildStableSystemPrefix, buildSystemContent } from './lib/prompt.mjs';
 import { buildL1Context, L1_TOKEN_BUDGET } from './lib/context.mjs';
@@ -37,7 +37,7 @@ const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '127.0.0.1';
 
 // D14：每日预算护栏。默认 1 元/天；mock 阶段按字数估算 token，同样记账。
-const BUDGET_YUAN = Number(process.env.DAILY_BUDGET_YUAN || 1);
+const BUDGET_YUAN = Number(process.env.DAILY_BUDGET_YUAN || 2);
 const BUDGET_TOKENS = Number(process.env.DAILY_TOKEN_LIMIT || 200000);
 const PRICE_IN = Number(process.env.PRICE_IN_YUAN_PER_MTOK || 2);   // 元 / 百万输入 token
 const PRICE_OUT = Number(process.env.PRICE_OUT_YUAN_PER_MTOK || 8); // 元 / 百万输出 token
@@ -566,6 +566,25 @@ function memoryBlock(query = '', queryVector = null) {
   ].join('\n');
 }
 
+function embeddingConfigured() {
+  const cfg = loadConfig();
+  return Boolean(cfg.embeddingApiKey && cfg.embeddingBaseUrl && cfg.embeddingModel && cfg.embeddingPrice !== null);
+}
+
+// P4：日常聊天先用关键词；只有关键词无命中或明确回忆时才付向量调用。
+function shouldEmbedQuery(query) {
+  const text = String(query || '').trim();
+  if (!text || !embeddingConfigured()) return false;
+  const records = memoryRecords();
+  if (!records.length) return false;
+  const keywordHits = retrieveMemories(records, text, { vectors: memoryVectors, queryVector: null, limit: 1 }).length;
+  return shouldUseSemanticMemory(text, {
+    configured: true,
+    memoryCount: records.length,
+    keywordHits,
+  });
+}
+
 // ---------- token 估算与每日预算（D14） ----------
 const CJK = /[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/g;
 
@@ -902,6 +921,7 @@ function publicSettings() {
     keySource: envKey ? 'environment' : (cfg.apiKey ? 'local' : 'none'),
     keyEditable: !envKey,
     mode: isMockMode() ? 'mock' : 'live',
+    replySpeed: loadReplySpeed(),
     connectionStatus: !cfg.apiKey ? 'not_configured'
       : (isMockMode() ? 'mock' : (lastConnectionTest?.ok ? 'connected' : (lastConnectionTest ? 'failed' : 'untested'))),
     embedding: {
@@ -1059,6 +1079,21 @@ function saveMemeStrategy(patch) {
   return loadMemeStrategy();
 }
 
+function loadReplySpeed() {
+  return normalizeReplySpeed(readConfig().replySpeed);
+}
+
+function saveReplySpeed(value) {
+  const speed = normalizeReplySpeed(value);
+  const cfg = readConfig();
+  cfg.v = Number.isInteger(cfg.v) ? cfg.v : 1;
+  cfg.replySpeed = speed;
+  const tmp = `${CONFIG_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2) + '\n', 'utf8');
+  fs.renameSync(tmp, CONFIG_FILE);
+  return speed;
+}
+
 function loadUserProfile() {
   const saved = readConfig().userProfile;
   const profile = emptyUserProfile();
@@ -1149,7 +1184,7 @@ async function streamModel(onDelta, maxTokens, memeSnapshot = null) {
 
   const nowDate = new Date();
   const query = messages.at(-1)?.role === 'user' ? messages.at(-1).text : '';
-  const queryVector = await embedQuery(query, estimateInputTokens(query));
+  const queryVector = shouldEmbedQuery(query) ? await embedQuery(query, estimateInputTokens(query)) : null;
   const contextMessages = buildContextMessages(nowDate);
   const promptBundle = buildPromptBundle(nowDate, loadProfile(), query, queryVector, memeSnapshot, contextMessages);
   const messagesOut = [
@@ -1361,6 +1396,7 @@ async function streamReply(res, userMsg, tokensIn) {
   const jobId = userMsg.id;
   const day = localDay(); // 计入「受理这条消息」的那一天
   const mode = isMockMode() ? 'mock' : 'live';
+  const replySpeed = replySpeedMultiplier(loadReplySpeed());
   const memeSnapshot = buildMemeCatalogSnapshot();
   const emit = (event, data) => {
     const frame = publish(event, { jobId, ...data });
@@ -1387,7 +1423,7 @@ async function streamReply(res, userMsg, tokensIn) {
       if (wait > 0) await sleep(wait);
       firstPart = false;
     } else {
-      await sleep(partDelay(lastLen));
+      await sleep(Math.max(0, Math.round(partDelay(lastLen) * replySpeed)));
     }
     const msg = append({
       id: crypto.randomUUID(), role: 'assistant', text: clean, at: nowIso(), replyTo: userMsg.id, mode,
@@ -1442,7 +1478,7 @@ async function streamReply(res, userMsg, tokensIn) {
     // 按剩余额度收紧输出上限，避免一句话就把当天预算打穿。
     // flash 是推理模型，先烧 reasoning tokens，下限给到 256，免得正文被截空。
     const remaining = Math.max(0, BUDGET_YUAN - budgetState().spentYuan);
-    const maxTokens = Math.max(256, Math.min(800, Math.floor((remaining / PRICE_OUT) * 1e6)));
+    const maxTokens = Math.max(256, Math.min(500, Math.floor((remaining / PRICE_OUT) * 1e6)));
 
     // onDelta 是同步回调，先入队；由 consumer 按句消费（切句 + 停顿）
     const queue = [];
@@ -1513,6 +1549,7 @@ async function streamReply(res, userMsg, tokensIn) {
   const cacheMissRaw = usage?.prompt_cache_miss_tokens
     ?? (Number.isFinite(Number(cacheHitRaw)) && Number.isFinite(Number(usage?.prompt_tokens))
       ? Number(usage.prompt_tokens) - Number(cacheHitRaw) : null);
+  const reasoningRaw = usage?.completion_tokens_details?.reasoning_tokens ?? usage?.reasoning_tokens;
   recordUsage({
     day,
     mode,
@@ -1524,6 +1561,7 @@ async function streamReply(res, userMsg, tokensIn) {
     ...(breakdown ? { breakdown } : {}),
     ...(Number.isFinite(Number(cacheHitRaw)) ? { promptCacheHit: Number(cacheHitRaw) } : {}),
     ...(Number.isFinite(Number(cacheMissRaw)) ? { promptCacheMiss: Number(cacheMissRaw) } : {}),
+    ...(Number.isFinite(Number(reasoningRaw)) ? { reasoningTokens: Number(reasoningRaw) } : {}),
     userMsgId: userMsg.id,
     replyId: saved[0].id,
   });
@@ -2258,6 +2296,14 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === '/api/settings' && req.method === 'GET') {
       return sendJson(res, 200, publicSettings());
+    }
+
+    if (url.pathname === '/api/settings/reply-speed' && req.method === 'POST') {
+      let payload = {};
+      try { payload = JSON.parse(await readBody(req) || '{}'); } catch { return sendJson(res, 400, { error: 'invalid_json' }); }
+      if (!['slow', 'normal', 'fast'].includes(payload.speed)) return sendJson(res, 400, { error: 'invalid_reply_speed' });
+      const speed = saveReplySpeed(payload.speed);
+      return sendJson(res, 200, { ok: true, replySpeed: speed });
     }
 
     if (url.pathname === '/api/settings' && req.method === 'POST') {

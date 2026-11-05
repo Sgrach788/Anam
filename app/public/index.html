@@ -72,7 +72,7 @@
         <div class="sk w72"></div>
       </div>
       </main>
-      <button id="jumpBottom" class="jump-bottom" type="button" aria-label="回到最新消息" hidden>⌄</button>
+      <button id="jumpBottom" class="jump-bottom" type="button" aria-label="回到最新消息" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 9 7 7 7-7"/></svg></button>
 
     <form id="composer">
       <textarea id="input" rows="1" placeholder="说点什么…" autocomplete="off" enterkeyhint="send"></textarea>
@@ -146,6 +146,13 @@
         <div class="metric-row"><span>当前模型</span><b id="apiModel">—</b></div>
         <div class="metric-row"><span>API 主机</span><b id="apiHost">—</b></div>
         <div class="metric-row"><span>API Key</span><b id="apiKeyState">—</b></div>
+        <label class="field">回复速度
+          <select id="replySpeed">
+            <option value="slow">慢 · 1.5× 停顿</option>
+            <option value="normal">正常 · 1×</option>
+            <option value="fast">快 · 0.6×</option>
+          </select>
+        </label>
         <label class="field">输入新的 API Key
           <input id="apiKeyInput" type="password" autocomplete="new-password" placeholder="已配置时留空表示不修改" />
         </label>

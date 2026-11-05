@@ -134,7 +134,7 @@ const byId = new Map();
 const ids = [
   'app', 'list', 'loadOlder', 'jumpBottom', 'input', 'send', 'statusDot', 'statusText', 'budgetText', 'budgetDialog', 'budgetDialogText', 'budgetCancel', 'budgetContinue', 'budgetResetBtn', 'lock', 'lockInput', 'lockBtn', 'lockErr',
   'toast', 'composer', 'copybar', 'copyBtn', 'settingsBtn', 'sidebar', 'sideClose', 'sideMask',
-  'consoleOpen', 'consolePanel', 'consoleClose', 'consoleCloseIcon', 'apiKeyInput', 'apiSaveBtn', 'apiClearBtn', 'apiTestBtn', 'apiSettingsMsg',
+  'consoleOpen', 'consolePanel', 'consoleClose', 'consoleCloseIcon', 'apiKeyInput', 'replySpeed', 'apiSaveBtn', 'apiClearBtn', 'apiTestBtn', 'apiSettingsMsg',
   'apiModeBadge', 'apiModel', 'apiKeyState', 'apiHost', 'balanceRefresh', 'balanceValue', 'balanceStatus',
   'usageDay', 'usageSpend', 'usageTokens', 'usageCalls', 'usageLimit', 'usageBar', 'usageNote', 'usageBreakdown', 'statusVersionLine', 'statusUpdateHint', 'statusUpdateBtn', 'statusDetails',
   'terminalDirectory', 'apiSection', 'usageSection', 'balanceSection', 'statusSection', 'memorySection', 'backupSection', 'dataSection', 'advancedSection', 'futureSection',
@@ -286,6 +286,15 @@ check('本机资料保存独立于 AI 资料', byId.get('userName').textContent 
 byId.get('tabConsole').trigger('click');
 await sleep(1000);
 check('控制台可打开', byId.get('consolePanel').hidden === false);
+check('回复速度默认正常档', byId.get('replySpeed').value === 'normal', byId.get('replySpeed').value);
+byId.get('replySpeed').value = 'fast';
+byId.get('replySpeed').trigger('change');
+await sleep(400);
+const speedSettings = await (await fetch(`${BASE}/api/settings`)).json();
+check('回复速度保存到 config', speedSettings.replySpeed === 'fast', speedSettings.replySpeed);
+await fetch(`${BASE}/api/settings/reply-speed`, {
+  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ speed: 'normal' }),
+});
 check('终端显示产品与 SW 版本', byId.get('statusVersionLine').textContent.includes(PRODUCT_VERSION)
   && byId.get('statusVersionLine').textContent.includes('companion-v'), byId.get('statusVersionLine').textContent);
 check('终端运行详情含三版本', byId.get('statusDetails').children.length >= 3);

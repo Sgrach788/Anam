@@ -49,6 +49,7 @@ const backupInfo = document.getElementById('backupInfo');
 const dataInfo = document.getElementById('dataInfo');
 const advancedInfo = document.getElementById('advancedInfo');
 const apiKeyInput = document.getElementById('apiKeyInput');
+const replySpeed = document.getElementById('replySpeed');
 const apiSaveBtn = document.getElementById('apiSaveBtn');
 const apiClearBtn = document.getElementById('apiClearBtn');
 const apiTestBtn = document.getElementById('apiTestBtn');
@@ -1205,6 +1206,7 @@ budgetResetBtn.addEventListener('click', async () => {
 
 function displaySettings(info) {
   apiModel.textContent = info.model || 'deepseek-flash';
+  replySpeed.value = info.replySpeed || 'normal';
   apiKeyState.textContent = info.keySource === 'environment'
     ? '由环境变量管理'
     : (info.apiKeyConfigured ? '已保存在本机' : '尚未配置');
@@ -2002,6 +2004,22 @@ consoleClose.addEventListener('click', () => {
 });
 consolePanel.addEventListener('click', (e) => {
   if (e.target === consolePanel) switchMainView('inbox');
+});
+replySpeed.addEventListener('change', async () => {
+  const previous = replySpeed.value;
+  try {
+    const response = await apiFetch('/api/settings/reply-speed', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ speed: replySpeed.value }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    toast(`回复速度：${replySpeed.selectedOptions?.[0]?.textContent || data.replySpeed}`);
+  } catch (err) {
+    replySpeed.value = previous;
+    toast(`回复速度保存失败：${err.message}`);
+  }
 });
 apiSaveBtn.addEventListener('click', () => saveApiKey(false));
 apiClearBtn.addEventListener('click', () => saveApiKey(true));

@@ -33,6 +33,17 @@ export function partDelay(len) {
   return Math.min(1800, Math.max(600, 600 + Math.max(0, len) * 40));
 }
 
+// 回复速度档位：只缩放句间停顿，不改切句/内容。
+export const REPLY_SPEED_MULTIPLIERS = Object.freeze({ slow: 1.5, normal: 1, fast: 0.6 });
+
+export function normalizeReplySpeed(value) {
+  return Object.prototype.hasOwnProperty.call(REPLY_SPEED_MULTIPLIERS, value) ? value : 'normal';
+}
+
+export function replySpeedMultiplier(value) {
+  return REPLY_SPEED_MULTIPLIERS[normalizeReplySpeed(value)];
+}
+
 // 模型有时会把历史开头的 [今天 19:12] 抄进正文；这里直接清掉。
 const TIME_LABEL_RE = /[\[【（(]\s*(?:今天|昨天|前天|\d{1,2}月\d{1,2}日)\s*\d{1,2}:\d{2}\s*[\]】）)]/g;
 // 模型也会写裸的 [21:25] / [21:25:30]；只剥标签，不动正文。

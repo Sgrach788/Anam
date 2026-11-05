@@ -40,3 +40,13 @@ export function extractFacts(text) {
 export function renderMemoryFacts(facts, limit = 30) {
   return facts.slice(-limit).map((fact) => `- ${fact.quote}（来源：用户原话，消息序号 ${fact.sourceSeq}）`);
 }
+
+// P4：只在关键词无命中或明确回忆时请求 embedding。
+export const RECALL_CUE_RE = /(记得|还记得|以前|之前|上次|那次|曾经|过去|回忆|那时|当初|多久|后来|当时)/u;
+
+export function shouldUseSemanticMemory(query, { configured = false, memoryCount = 0, keywordHits = 0 } = {}) {
+  const text = String(query || '').trim();
+  if (!text || !configured || memoryCount <= 0) return false;
+  if (RECALL_CUE_RE.test(text)) return true;
+  return keywordHits <= 0;
+}

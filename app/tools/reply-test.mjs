@@ -1,6 +1,6 @@
 // 纯函数测试：切句 + 时间标签清理。
 // 用法：node app/tools/reply-test.mjs
-import { MAX_PART, findSentenceCut, findCommaCut, partDelay, sanitizeReply } from '../lib/reply.mjs';
+import { MAX_PART, findSentenceCut, findCommaCut, partDelay, sanitizeReply, normalizeReplySpeed, replySpeedMultiplier } from '../lib/reply.mjs';
 
 const checks = [];
 const check = (name, ok, detail = '') => checks.push({ name, ok: Boolean(ok), detail });
@@ -35,6 +35,9 @@ check('没有逗号就硬切', findCommaCut('字'.repeat(80)) === MAX_PART);
 
 // 停顿
 check('停顿 600–1800ms', partDelay(0) === 600 && partDelay(15) === 1200 && partDelay(100) === 1800, `${partDelay(0)},${partDelay(15)},${partDelay(100)}`);
+check('速度三档倍率', normalizeReplySpeed('slow') === 'slow' && replySpeedMultiplier('slow') === 1.5
+  && replySpeedMultiplier('normal') === 1 && replySpeedMultiplier('fast') === 0.6);
+check('未知速度回退正常', normalizeReplySpeed('turbo') === 'normal' && replySpeedMultiplier(undefined) === 1);
 
 let failed = 0;
 for (const c of checks) {

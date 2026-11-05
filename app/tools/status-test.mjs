@@ -16,7 +16,7 @@ const checks = [];
 const check = (name, ok, detail = '') => checks.push({ name, ok: Boolean(ok), detail });
 
 const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.mjs')], {
-  env: { ...process.env, DATA_DIR: DATA, PORT: String(PORT), HOST: '127.0.0.1', MOCK_MODEL: '1', TYPING_FIRST_MS: '0' },
+  env: { ...process.env, DATA_DIR: DATA, PORT: String(PORT), HOST: '127.0.0.1', MOCK_MODEL: '1', TYPING_FIRST_MS: '0', DAILY_BUDGET_YUAN: '' },
   stdio: 'ignore',
 });
 for (let i = 0; i < 40; i++) {
@@ -35,6 +35,7 @@ check('模型与主机存在', typeof status.model === 'string' && typeof status
 check('baseUrl 只给 host', !String(status.baseUrlHost).includes('/') && !String(status.baseUrlHost).includes('http'));
 check('不含 API key', !Object.hasOwn(status, 'apiKey') && !JSON.stringify(status).includes('sk-'));
 check('预算字段存在', Number.isFinite(status.budget?.spentYuan) && Number.isFinite(status.budget?.limitYuan));
+check('默认预算 ¥2', status.budget?.limitYuan === 2, status.budget?.limitYuan);
 check('运行时长/启动时间存在', Number.isFinite(status.uptimeSeconds) && typeof status.startedAt === 'string');
 check('表情计数存在', Number.isFinite(status.memes?.total) && Number.isFinite(status.memes?.catalog));
 const breakdownResponse = await fetch(`${BASE}/api/usage/breakdown`);
