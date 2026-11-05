@@ -1003,6 +1003,66 @@
 - `dom-smoke` **64/64**；`status-test` 11/11；`prompt-cache-test` 8/8；`l1-context-test` 7/7；`meme-chat-test` 20/20；`meme-strategy-test` 16/16；`usage-breakdown-test` 6/6；`reply-test` 16/16。
 - 产品 **0.2.41**；SW **v41**；schema **1**。
 
+## v42：键盘两件 + 未读/时间/终端收口 — 2026-11-05
+
+### 1. 滚动聊天记录收起键盘
+
+- `list` 上新增 `touchmove` / `wheel` 监听：只有 `document.activeElement === input` 时 `input.blur()`；
+- 没有复用 scroll 监听，程序性滚动（追加消息、`scheduleScroll`）不触发；
+- 实测：输入框聚焦 → wheel 后 `activeElement` 为空；随后重新聚焦 → 程序性改 `scrollTop`，焦点仍是 input。
+
+### 2. 底部收键盘跳动
+
+- 按 Tian 决定**本轮不改**，仅保留备忘；`fitViewport` / viewport meta 未动。
+
+### 3. 一键到底箭头
+
+- 改为输入框右上角圆形 V 按钮，`right:16px`、`bottom:calc(84px + safe-area)`，不再居中；
+- 实测按钮矩形 `top=720 bottom=760 right=374`，输入框 `top=773.8`，`overlap=false`；
+- 出现条件、点击滚到底、贴底隐藏逻辑未变。
+
+### 4. 未读徽章
+
+- tab 与会话行都改为红色数字；共用同一计数；
+- 非列表页（空间/控制台/联系人/资料）tab 显示；消息列表页 tab 隐藏，由会话行显示，避免同一屏两个相同数字；
+- 进入聊天页才写已读标记并同时清空；列表页保留未读，便于看到哪条会话未读；
+- 实测：空间页 tab=`4`；切到消息列表 tab 隐藏、会话行=`4`；打开会话后两者 0，`companion.read.v1=6`。
+- 后台 SSE 订阅继续使用；PWA 关闭期间仍无实时消息。
+
+### 5. 裸时间戳外泄
+
+- `app/lib/reply.mjs` 新增裸时间正则：
+  - `[21:25]` / `[21:25:30]` 任意位置剥除；
+  - 行首 `21:25` / `21:25:30` 剥除；
+  - 行内 `嗯21:25好` 不误伤；
+  - 保留 v41 已有点日期标签。
+- 稳定前缀 `TIME_RULES` 增加“裸的 [21:25] 或行首 21:25”示例。
+- `reply-test` **21/21**；截图中的旧 `[21:25]` 是修复前历史消息，不是新回复。
+
+### 6. 终端置顶导航
+
+- 终端首页顺序改为 **API → 本地用量 → 管理目录**；实测 API top=68、用量 top=428、目录 top=1151；
+- 终端主页隐藏左上退出按钮，切换只靠底部 tab；tab 在控制台上方可见；
+- 子页面复用左上角已有返回按钮（`consoleClose` 改为 `‹`，回到 `#/terminal`），删除 v41 额外 `terminalBack` 按钮；
+- 实测主页 `closeHidden=true`、tabs 可见；表情子页 `closeHidden=false`，点击后回目录。
+
+### 验收
+
+- 截图：`D:\Companion\v42-evidence\`
+  - `01-jump-v42.png`
+  - `02-terminal-directory-v42.png`
+  - `03-terminal-memes-v42.png`
+  - `04-unread-tab-v42.png`
+  - `05-inbox-row-v42.png`
+- 说明：截图来自 Chrome 390×844 移动视口，不是实体手机录屏。
+- 测试：`reply-test` 21/21、`prompt-cache-test` 8/8、`l1-context-test` 7/7、`status-test` 11/11、`dom-smoke` 64/64；其余回归同 v41。
+- 未做：底部收键盘跳动、表情目录 30→50、新增 6 张入库。
+
+### 版本
+
+- 产品 **0.2.42**；SW **v42**；schema **1**。
+
+
 
 
 

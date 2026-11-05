@@ -1,6 +1,6 @@
 ﻿// Service Worker：缓存应用外壳，API 一律不走缓存。
 // 前端有改动时把 VERSION 加一（浏览器下次导航会拉新 sw.js 并换缓存）。
-const VERSION = 'companion-v41-2026-11-05';
+const VERSION = 'companion-v42-2026-11-05';
 
 const SHELL = [
   '/',

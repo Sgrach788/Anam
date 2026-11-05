@@ -48,7 +48,7 @@
         <div class="conversation-list">
           <h2>消息</h2>
           <button id="conversationCard" class="conversation-card" type="button" aria-label="打开 Anam 对话">
-            <span class="avatar" id="inboxAiAvatar">✳</span><span class="conversation-copy"><b id="inboxAiName">Anam</b><small id="inboxPreview">还没有消息</small></span><time id="inboxTime"></time>
+            <span class="avatar" id="inboxAiAvatar">✳</span><span class="conversation-copy"><b id="inboxAiName">Anam</b><small id="inboxPreview">还没有消息</small></span><span class="conversation-meta"><time id="inboxTime"></time><span id="inboxBadge" class="conversation-badge" hidden>0</span></span>
           </button>
         </div>
       </div>
@@ -72,7 +72,7 @@
         <div class="sk w72"></div>
       </div>
       </main>
-      <button id="jumpBottom" class="jump-bottom" type="button" aria-label="回到最新消息" hidden>↓</button>
+      <button id="jumpBottom" class="jump-bottom" type="button" aria-label="回到最新消息" hidden>⌄</button>
 
     <form id="composer">
       <textarea id="input" rows="1" placeholder="说点什么…" autocomplete="off" enterkeyhint="send"></textarea>
@@ -133,7 +133,7 @@
   <div id="consolePanel" hidden>
     <div class="console-box" role="dialog" aria-modal="true" aria-labelledby="consoleTitle">
       <div class="console-head">
-        <button id="consoleClose" class="page-back icon-btn" type="button" aria-label="返回设置">
+        <button id="consoleClose" class="page-back icon-btn" type="button" aria-label="返回设置" hidden>
           <span id="consoleCloseIcon" class="nav-icon">×</span>
         </button>
         <div><b id="consoleTitle">控制台</b><small>服务状态、API 与功能预览</small></div>
@@ -141,18 +141,6 @@
       </div>
 
       <div class="console-content">
-      <button id="terminalBack" class="ghost compact terminal-back" type="button" hidden>‹ 终端</button>
-      <div id="terminalDirectory">
-        <div class="terminal-directory-title">管理目录</div>
-        <div class="terminal-directory-list">
-          <button class="terminal-row" type="button" data-terminal="memes"><span><b>表情包管理</b><small>库、审核、发送策略</small></span><em id="rowMemes">读取中…</em></button>
-          <button class="terminal-row" type="button" data-terminal="memory"><span><b>记忆管理</b><small>长期记忆、摘要、语义检索</small></span><em id="rowMemory">读取中…</em></button>
-          <button class="terminal-row" type="button" data-terminal="backup"><span><b>备份与恢复</b><small>每日自动备份，保留最近 7 天</small></span><em id="rowBackup">读取中…</em></button>
-          <button class="terminal-row" type="button" data-terminal="data"><span><b>数据与存储</b><small>消息、记忆与本地缓存</small></span><em id="rowData">读取中…</em></button>
-          <button class="terminal-row" type="button" data-terminal="status"><span><b>运行状态</b><small>产品、SW、模型与预算</small></span><em id="rowStatus">读取中…</em></button>
-          <button class="terminal-row" type="button" data-terminal="advanced"><span><b>高级维护</b><small>schema、运行时长与重置</small></span><em id="rowAdvanced">读取中…</em></button>
-        </div>
-      </div>
       <section id="apiSection" class="console-section">
         <div class="section-title"><b>DeepSeek API</b><span id="apiModeBadge" class="status-badge">读取中</span></div>
         <div class="metric-row"><span>当前模型</span><b id="apiModel">—</b></div>
@@ -188,6 +176,18 @@
         <button id="budgetResetBtn" class="ghost compact" type="button" hidden>恢复今日限额</button>
         <div id="usageBreakdown" class="usage-breakdown"></div>
       </section>
+
+      <div id="terminalDirectory">
+        <div class="terminal-directory-title">管理目录</div>
+        <div class="terminal-directory-list">
+          <button class="terminal-row" type="button" data-terminal="memes"><span><b>表情包管理</b><small>库、审核、发送策略</small></span><em id="rowMemes">读取中…</em></button>
+          <button class="terminal-row" type="button" data-terminal="memory"><span><b>记忆管理</b><small>长期记忆、摘要、语义检索</small></span><em id="rowMemory">读取中…</em></button>
+          <button class="terminal-row" type="button" data-terminal="backup"><span><b>备份与恢复</b><small>每日自动备份，保留最近 7 天</small></span><em id="rowBackup">读取中…</em></button>
+          <button class="terminal-row" type="button" data-terminal="data"><span><b>数据与存储</b><small>消息、记忆与本地缓存</small></span><em id="rowData">读取中…</em></button>
+          <button class="terminal-row" type="button" data-terminal="status"><span><b>运行状态</b><small>产品、SW、模型与预算</small></span><em id="rowStatus">读取中…</em></button>
+          <button class="terminal-row" type="button" data-terminal="advanced"><span><b>高级维护</b><small>schema、运行时长与重置</small></span><em id="rowAdvanced">读取中…</em></button>
+        </div>
+      </div>
 
       <section id="statusSection" class="console-section" hidden>
         <div class="section-title"><b>运行状态</b><span id="statusVersionLine" class="muted">读取中…</span></div>

@@ -1152,3 +1152,17 @@ html {
 
 /* v41：模块区用 flex 布局，hidden 必须显式覆盖 */
 .console-section[hidden] { display: none !important; }
+
+/* v42：终端首页保留底部 tab；输入框上方右侧 V 按钮 */
+body.console-open #tabs { z-index: 90; }
+body.console-open #consolePanel .console-content { padding-bottom: calc(env(safe-area-inset-bottom) + 86px); }
+.jump-bottom { left: auto; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom)); transform: none; width: 40px; height: 40px; font-size: 24px; font-weight: 500; }
+
+/* v42：会话行未读徽章 */
+.conversation-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; align-self: flex-start; min-width: 44px; }
+.conversation-card time { align-self: auto; min-width: 0; padding-top: 0; }
+.conversation-badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #e5484d; color: #fff; font-size: 10px; line-height: 18px; text-align: center; font-weight: 600; }
+.conversation-badge[hidden] { display: none; }
+
+/* v42：hidden 覆盖 .page-back 的 grid 显示 */
+.page-back[hidden], #consoleClose[hidden] { display: none !important; }

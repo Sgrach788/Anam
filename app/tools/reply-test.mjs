@@ -10,6 +10,11 @@ check('去掉行首 [今天 19:12]', sanitizeReply('[今天 19:12] 你好。') =
 check('去掉「今天 19:12：」前缀', sanitizeReply('今天 19:12：在的。') === '在的。', sanitizeReply('今天 19:12：在的。'));
 check('只有标签时变空', sanitizeReply('[昨天 22:13]') === '');
 check('去掉 [10月28日 09:05]', sanitizeReply('[10月28日 09:05] 早。') === '早。');
+check('去掉裸 [21:25]', sanitizeReply('[21:25] 好 来') === '好 来', sanitizeReply('[21:25] 好 来'));
+check('去掉句中裸 [21:25]', sanitizeReply('这样能看清吗[21:25]') === '这样能看清吗', sanitizeReply('这样能看清吗[21:25]'));
+check('去掉裸 [21:25:30]', sanitizeReply('[21:25:30] 好') === '好', sanitizeReply('[21:25:30] 好'));
+check('去掉行首裸 21:25', sanitizeReply('21:25 好') === '好', sanitizeReply('21:25 好'));
+check('行内裸时间不误伤', sanitizeReply('嗯21:25好') === '嗯21:25好');
 check('正常文本不动', sanitizeReply('今天有点累。') === '今天有点累。');
 // 模型把历史 sticker 抄成独立正文；只清独立句，不误伤行内文字
 check('去掉独立 [表情] 句', sanitizeReply('[表情] 开心。') === '', sanitizeReply('[表情] 开心。'));

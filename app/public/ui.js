@@ -28,7 +28,6 @@ const consolePanel = document.getElementById('consolePanel');
 const consoleClose = document.getElementById('consoleClose');
 const consoleCloseIcon = document.getElementById('consoleCloseIcon');
 const terminalDirectory = document.getElementById('terminalDirectory');
-const terminalBack = document.getElementById('terminalBack');
 const apiSection = document.getElementById('apiSection');
 const usageSection = document.getElementById('usageSection');
 const balanceSection = document.getElementById('balanceSection');
@@ -99,6 +98,7 @@ const inboxAiName = document.getElementById('inboxAiName');
 const inboxAiAvatar = document.getElementById('inboxAiAvatar');
 const inboxPreview = document.getElementById('inboxPreview');
 const inboxTime = document.getElementById('inboxTime');
+const inboxBadge = document.getElementById('inboxBadge');
 const userAvatar = document.getElementById('userAvatar');
 const userName = document.getElementById('userName');
 const userProfileOpen = document.getElementById('userProfileOpen');
@@ -277,12 +277,12 @@ function initReadMarker() {
     const raw = localStorage.getItem(READ_KEY);
     const saved = Number(raw);
     lastReadSeq = Number.isFinite(saved) && saved > 0 ? saved : maxLoadedSeq();
+    if (!Number.isFinite(saved) || saved <= 0) localStorage.setItem(READ_KEY, String(lastReadSeq));
   } catch {
     lastReadSeq = maxLoadedSeq();
   }
   readInitialized = true;
-  if (activeView === 'inbox' || activeView === 'chat') markChatRead();
-  else updateUnreadBadge();
+  updateUnreadBadge();
 }
 
 function markChatRead() {
@@ -299,11 +299,13 @@ function updateUnreadBadge() {
     tabChatBadge.hidden = true;
     return;
   }
-  const count = (activeView === 'inbox' || activeView === 'chat')
-    ? 0
-    : loadedMessages.filter((message) => message.role === 'assistant' && Number(message.seq) > lastReadSeq).length;
-  tabChatBadge.hidden = count <= 0;
-  tabChatBadge.textContent = count > 99 ? '99+' : String(count);
+  const count = loadedMessages.filter((message) => message.role === 'assistant' && Number(message.seq) > lastReadSeq).length;
+  const label = count > 99 ? '99+' : String(count);
+  // 列表页不显示 tab 徽章；会话行负责显示未读。聊天页视为已读。
+  tabChatBadge.hidden = count <= 0 || activeView === 'inbox' || activeView === 'chat';
+  tabChatBadge.textContent = label;
+  inboxBadge.hidden = count <= 0 || activeView === 'chat';
+  inboxBadge.textContent = label;
 }
 
 function stopUnreadEvents() {
@@ -315,7 +317,7 @@ function stopUnreadEvents() {
 
 // 不在对话页时保持一条 SSE 订阅，收到她的新消息就走现有 handleFrame 路径。
 async function startUnreadEvents() {
-  if (unreadEvents || activeView === 'inbox' || activeView === 'chat') return;
+  if (unreadEvents || activeView === 'chat') return;
   const ac = new AbortController();
   unreadEvents = ac;
   while (!ac.signal.aborted) {
@@ -407,6 +409,13 @@ list.addEventListener('scroll', () => {
   updateLoadOlder();
   updateJumpBottom();
 }, { passive: true });
+
+// 用户主动拖动聊天记录时收起键盘；程序性滚动不经过这里。
+function dismissKeyboardForListDrag() {
+  if (document.activeElement === input) input.blur();
+}
+list.addEventListener('touchmove', dismissKeyboardForListDrag, { passive: true });
+list.addEventListener('wheel', dismissKeyboardForListDrag, { passive: true });
 
 // requestAnimationFrame 合并滚动；贴底时连续两帧校正（输入框高度、键盘收缩会晚一帧生效）
 function scheduleScroll(force = false) {
@@ -1104,7 +1113,11 @@ function showTerminalModule(module) {
   terminalModule = module;
   const subpage = Boolean(module);
   terminalDirectory.hidden = subpage;
-  terminalBack.hidden = !subpage;
+  consoleClose.hidden = !subpage;
+  if (subpage) {
+    consoleCloseIcon.textContent = '‹';
+    consoleClose.setAttribute('aria-label', '返回终端目录');
+  }
   apiSection.hidden = subpage;
   usageSection.hidden = subpage;
   balanceSection.hidden = true;
@@ -1124,10 +1137,6 @@ function handleTerminalHash() {
   showTerminalModule(currentTerminalModule());
 }
 
-terminalBack.addEventListener('click', () => {
-  if (location.hash) location.hash = '#/terminal';
-  else handleTerminalHash();
-});
 window.addEventListener('hashchange', () => {
   if (!consolePanel.hidden) handleTerminalHash();
 });
@@ -1397,7 +1406,7 @@ async function loadSpace() {
 const rootViews = { inbox: inboxView, chat: chatView, contacts: contactsView, space: spaceView, 'ai-profile': aiProfileView, 'user-profile': userProfileView };
 function switchMainView(view, { keepScroll = false } = {}) {
   activeView = view;
-  if (view === 'inbox' || view === 'chat') {
+  if (view === 'chat') {
     stopUnreadEvents();
     markChatRead();
   } else {
@@ -1410,6 +1419,7 @@ function switchMainView(view, { keepScroll = false } = {}) {
     cancelScheduledScroll();
   }
   for (const [name, node] of Object.entries(rootViews)) node.hidden = name !== view;
+  document.body.classList.toggle('console-open', view === 'console');
   appEl.classList.toggle('chat-mode', view === 'chat');
   document.getElementById('tabs').hidden = view === 'chat' || view === 'ai-profile' || view === 'user-profile';
   tabChat.classList.toggle('active', view === 'inbox');
@@ -1982,7 +1992,14 @@ async function saveApiKey(clear = false) {
   }
 }
 
-consoleClose.addEventListener('click', () => switchMainView('inbox'));
+consoleClose.addEventListener('click', () => {
+  // 终端主页面不设退出按钮；子页面左上角返回目录。
+  if (!consolePanel.hidden && terminalModule) {
+    location.hash = '#/terminal';
+    return;
+  }
+  switchMainView('inbox');
+});
 consolePanel.addEventListener('click', (e) => {
   if (e.target === consolePanel) switchMainView('inbox');
 });
@@ -2310,7 +2327,7 @@ function handleFrame({ event, data, id }) {
     updateLoadOlder();
     writeMessageCache();
     if (!readInitialized) initReadMarker();
-    else if (activeView === 'inbox' || activeView === 'chat') markChatRead();
+    else if (activeView === 'chat') markChatRead();
     else updateUnreadBadge();
   } else if (event === 'user') {
     addMessageBubble(data);
@@ -2318,7 +2335,7 @@ function handleFrame({ event, data, id }) {
   } else if (event === 'message') {
     addMessageBubble(data);
     rememberMessage(data);
-    if (activeView === 'inbox' || activeView === 'chat') markChatRead();
+    if (activeView === 'chat') markChatRead();
     else updateUnreadBadge();
   } else if (event === 'done') {
     if (data.jobId === awaitJob) { awaitJob = null; loadHeaderProfile(); }
@@ -2513,6 +2530,7 @@ async function boot() {
     updateLoadOlder();
     writeMessageCache();
     initReadMarker();
+    void startUnreadEvents();
     await loadHeaderProfile();
     try {
       const userResponse = await apiFetch('/api/user-profile');

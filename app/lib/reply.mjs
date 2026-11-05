@@ -35,6 +35,9 @@ export function partDelay(len) {
 
 // 模型有时会把历史开头的 [今天 19:12] 抄进正文；这里直接清掉。
 const TIME_LABEL_RE = /[\[【（(]\s*(?:今天|昨天|前天|\d{1,2}月\d{1,2}日)\s*\d{1,2}:\d{2}\s*[\]】）)]/g;
+// 模型也会写裸的 [21:25] / [21:25:30]；只剥标签，不动正文。
+const BARE_TIME_LABEL_RE = /[\[【（(]\s*\d{1,2}:\d{2}(?::\d{2})?\s*[\]】）)]/g;
+const LEADING_BARE_TIME_RE = /^\s*\d{1,2}:\d{2}(?::\d{2})?\s*[：:，,、]?\s*/;
 const LEADING_TIME_RE = /^(?:今天|昨天|前天)\s*\d{1,2}:\d{2}\s*[：:，,、]?\s*/;
 // 表情只能用 meta.meme 选择；模型若把历史里的 [表情] X 抄成独立句子，正文清掉。
 const STICKER_SENTENCE_RE = /(^|[。！？!?…\n])\s*[\[【]\s*表情\s*[\]】]\s*[^\n。！？!?…]{1,24}\s*[。！？!?…]?/gu;
@@ -42,6 +45,8 @@ const STICKER_SENTENCE_RE = /(^|[。！？!?…\n])\s*[\[【]\s*表情\s*[\]】]
 export function sanitizeReply(text) {
   return String(text || '')
     .replace(TIME_LABEL_RE, '')
+    .replace(BARE_TIME_LABEL_RE, '')
+    .replace(LEADING_BARE_TIME_RE, '')
     .replace(LEADING_TIME_RE, '')
     .replace(STICKER_SENTENCE_RE, '$1')
     .replace(/^[\s，。、；：,;:]+/, '')
