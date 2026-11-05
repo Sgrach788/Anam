@@ -39,8 +39,8 @@ export function buildSystemContent({
     memoryText,
     recentPostsText,
     memeText,
-    nowLine,
     signatureText,
+    nowLine,
   ].filter(Boolean).join('\n\n');
 }
 

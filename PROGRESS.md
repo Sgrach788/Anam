@@ -879,7 +879,7 @@
 - 新增 `app/lib/prompt.mjs`：
   - `TIME_RULES`、`META_FORMAT`、`STICKER_BAN`、`EMOTION_RULES` 固定文本；
   - `buildStableSystemPrefix()`：`PERSONA → profileBlock → 时间约束 → meta 格式 → 正文禁表情 → 情绪/签名/动态指令`；
-  - `buildSystemContent()`：`稳定前缀 → memory → recent posts → meme catalog → now → signature`。
+  - `buildSystemContent()`：`稳定前缀 → memory → recent posts → meme catalog → signature → now`。
 - `app/server.mjs:553 buildSystemPrompt` 改为使用上述纯函数；`streamModel` 不再把 meta/禁令/情绪指令追加在 `buildSystemPrompt` 之后（原追加已移入稳定前缀）。
 - **额外修正**：`profileBlock` 里的 `signature` 每轮会变，已移到尾巴的 `signatureBlock`，否则稳定前缀会被签名打穿。
 - 表情目录里的正文禁令已由稳定前缀承担，`memePromptBlock` 不再重复。
