@@ -958,6 +958,7 @@
 - 复用原有 `list` scroll 监听，同时更新加载更多与回到底部箭头；
 - 原有 `renderAll({preserveScroll})` 位置保持逻辑未改。
 - 实测：底部隐藏；顶部出现；无更早消息隐藏。
+- 加载更早实测：`top=0, scrollHeight=12952` → 点击后 `top=12429, scrollHeight=25381`，原阅读位置保持（12429 = 新高度 - 旧高度），按钮因不再在顶部而隐藏。
 
 ### 2. 一键到底箭头
 
@@ -997,6 +998,7 @@
   - `06-terminal-directory.png`
   - `07-terminal-memes.png`
   - `08-terminal-cost.png`
+  - `09-load-older-after.png`
 - 说明：截图来自 Chrome 390×844 移动视口，不是实体手机录屏。
 - `dom-smoke` **64/64**；`status-test` 11/11；`prompt-cache-test` 8/8；`l1-context-test` 7/7；`meme-chat-test` 20/20；`meme-strategy-test` 16/16；`usage-breakdown-test` 6/6；`reply-test` 16/16。
 - 产品 **0.2.41**；SW **v41**；schema **1**。
