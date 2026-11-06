@@ -3,7 +3,7 @@
 > 只属于你的私密 AI 伴侣。单用户、非商业、本机运行。
 >
 > 当前阶段：**V2「表情包」进行中**  
-> 当前版本：**0.2.44** · SW **v44** · schema **1**  
+> 当前版本：**0.2.44** · SW **v44-p1** · schema **1**  
 > 2a 观察期：**已结束**（2026-11-06）；表情扩容/输入等待/Phase 2B 仍按下一批安排
 
 本文是 GitHub 上的**用户说明 + 状态总览**。  
@@ -40,7 +40,7 @@
 |---|---|
 | 阶段 | V2「表情包」 |
 | 产品版本 | **0.2.44** |
-| SW 版本 | **companion-v44-2026-11-06** |
+| SW 版本 | **companion-v44-2026-11-06-p1** |
 | 数据 schema | **1** |
 | 聊天 | 单长对话；文字 + AI 表情 |
 | 记忆 | L1 近 30 轮/3000 token；L2 事实；L3 摘要；L4 关键词 + 可选语义 |
@@ -76,6 +76,10 @@
   - 日期/节假日/节气上下文；
   - 表情软提示补发/情绪两句；
   - 推送/天气进终端子页面，速度移到 AI 资料页。
+- **v44-p1**：
+  - 修复 Apple `BadJwtToken`：VAPID subject 从 `mailto:anam@localhost` 改为 Apple 接受的 `mailto:anam@example.com`；
+  - 推送测试返回每条订阅的 status/error，服务端记录 Apple 状态码；
+  - `sendPush` 加 10 秒超时；toast 3 秒。
 
 ### 2.2 进行中 / 冻结
 
@@ -217,6 +221,8 @@
 - iOS 需 16.4+，并从 Safari“添加到主屏幕”安装；必须由你点按授权。
 - 她回复完成时推送；前台可见时 SW 不重复弹。
 - 点通知会聚焦/打开聊天页。
+- 测试推送会返回每条订阅的真实 HTTP 状态；失败原因直接显示。
+- Apple 曾因 VAPID subject 为 `mailto:anam@localhost` 返回 `BadJwtToken`；v44-p1 已改用可接受的 `mailto:anam@example.com`。
 - 电脑关机推不了——这是架构取舍，不是 bug。
 
 ### 4.11 天气与日期
@@ -360,7 +366,7 @@ V4 之后不自动进入 V5/V6；只做维护和按需讨论。
   PATCH = 本阶段第 N 次改版
 当前：0.2.44
 
-SW 版本：companion-v44-2026-11-06
+SW 版本：companion-v44-2026-11-06-p1
 数据 schema：1
 ```
 
@@ -413,7 +419,7 @@ node tools\weather-test.mjs
 | usage-breakdown | 6/6 |
 | meme-test | 31/31 |
 | push | 6/6 |
-| push-api | 6/6 |
+| push-api | 7/7 |
 | weather | 7/7 |
 | v1-integration | 通过 |
 

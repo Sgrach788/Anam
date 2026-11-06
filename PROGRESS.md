@@ -1175,19 +1175,16 @@
 
 - `dom-smoke` 66/66、`status-test` 12/12、`reply-test` 23/23、`l1-context-test` 7/7、`meme-chat-test` 20/20、`usage-breakdown-test` 6/6、`meme-test` 31/31、`v1-integration` 通过。
 - 产品 **0.2.44**；SW **companion-v44-2026-11-06**；schema **1**。
+### v44-p1 推送补丁 — 2026-11-06
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+- 真实现象：`sent:0`、Apple 返回 403 `{"reason":"BadJwtToken"}`；网络/订阅均正常。
+- 根因：VAPID subject 为 `mailto:anam@localhost`，Apple 拒绝；改为 `mailto:anam@example.com` 后同一订阅 201。
+- `sendPush` 加 `AbortSignal.timeout(10000)`；超时/网络错误具名。
+- `sendPushToAll` 返回每条订阅 `status/error`，记录 Apple 响应正文；测试接口不再静默。
+- `pushStatusPayload` 增加 `keyMatch`；真实密钥对匹配 true；不匹配时可强制重新生成并清空旧订阅。
+- `ui.js` toast 1200→3000ms；测试失败显示真实 status/error。
+- 真实测试：`{"ok":true,"sent":1,"results":[{"status":201}],...}`。
+- SW：`companion-v44-2026-11-06-p1`。
+- `push-api` 7/7（新增 keyMatch）。
 
 

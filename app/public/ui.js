@@ -788,7 +788,7 @@ function toast(text) {
   toastEl.textContent = text;
   toastEl.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1200);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3000);
 }
 
 // ---------- 长按 → 复制按钮 ----------
@@ -1057,13 +1057,19 @@ async function loadPushStatus() {
     const response = await apiFetch('/api/push/status');
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     pushInfo = await response.json();
+    const keyMismatch = pushInfo.configured && pushInfo.keyMatch === false;
     pushState.textContent = !pushInfo.configured
       ? '未配置 VAPID 密钥'
-      : `${pushInfo.enabled ? '已开启' : '未开启'} · ${pushInfo.subscriptions} 个订阅`;
-    pushGenerate.hidden = pushInfo.configured;
-    pushToggle.hidden = !pushInfo.configured;
-    pushTest.hidden = !pushInfo.configured;
-    pushTest.disabled = !pushInfo.configured || !pushInfo.subscriptions;
+      : keyMismatch
+        ? 'VAPID 公钥/私钥不匹配'
+        : `${pushInfo.enabled ? '已开启' : '未开启'} · ${pushInfo.subscriptions} 个订阅`;
+    pushGenerate.hidden = pushInfo.configured && !keyMismatch;
+    pushGenerate.textContent = keyMismatch ? '重新生成密钥' : '生成推送密钥';
+    pushToggle.hidden = !pushInfo.configured || keyMismatch;
+    pushTest.hidden = !pushInfo.configured || keyMismatch;
+    pushTest.disabled = !pushInfo.configured || keyMismatch || !pushInfo.subscriptions;
+    if (keyMismatch) pushHint.textContent = '密钥不匹配，无法发送。请重新生成密钥，然后重新开启推送。';
+    else pushHint.textContent = '默认关闭。iOS 需 16.4+，并从 Safari“添加到主屏幕”安装；开启必须由你点按授权。';
     pushToggle.textContent = pushInfo.enabled ? '关闭推送' : '开启推送';
   } catch {
     pushState.textContent = '读取失败';
@@ -1145,9 +1151,13 @@ statusUpdateBtn.addEventListener('click', () => {
 pushGenerate.addEventListener('click', async () => {
   pushGenerate.disabled = true;
   try {
-    const response = await apiFetch('/api/push/vapid', { method: 'POST' });
+    const response = await apiFetch('/api/push/vapid', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ force: pushInfo.configured === true }),
+    });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    toast('推送密钥已生成');
+    toast('推送密钥已生成；请重新开启推送');
     await loadPushStatus();
   } catch (err) {
     toast(`生成失败：${err.message}`);
@@ -1174,7 +1184,13 @@ pushTest.addEventListener('click', async () => {
     const response = await apiFetch('/api/push/test', { method: 'POST' });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
-    toast(`测试推送：${data.sent || 0} 条`);
+    if (data.sent > 0) {
+      toast(`测试推送：${data.sent} 条已送达`);
+      return;
+    }
+    const failure = (data.results || []).find((item) => item.error);
+    const reason = failure ? `HTTP ${failure.status || 0} ${failure.error}`.slice(0, 180) : '没有可用订阅';
+    toast(`测试推送失败：${reason}`);
   } catch (err) {
     toast(`测试失败：${err.message}`);
   }

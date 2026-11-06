@@ -1,4 +1,4 @@
-import http from 'node:http';
+﻿import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -12,7 +12,7 @@ import { PRODUCT_VERSION } from './lib/version.mjs';
 import { emptyBreakdown, normalizeBreakdown, sumBreakdown, cacheRate } from './lib/usage.mjs';
 import { dateContextLine } from './lib/calendar.mjs';
 import { buildWeatherLine, weatherFresh, weatherText } from './lib/weather.mjs';
-import { generateVapidKeys, sendPush } from './lib/push.mjs';
+import { generateVapidKeys, sendPush, vapidPairMatches } from './lib/push.mjs';
 import {
   MEME_MAX_BYTES, MEME_MAX_COUNT, MEME_STATIC_EDGE,
   isSafeMemeId, newMemeId, sanitizeLabel, sanitizeTags,
@@ -1157,36 +1157,61 @@ function pushConfigured() {
   return Boolean(secret.vapidPrivateKey && readConfig().vapidPublicKey);
 }
 
+function pushKeyMatch() {
+  const secret = readSecretFile();
+  const publicKey = readConfig().vapidPublicKey;
+  if (!secret.vapidPrivateKey || !publicKey) return null;
+  return vapidPairMatches(secret.vapidPrivateKey, publicKey);
+}
+
 function pushEnabled() {
   return readConfig().pushEnabled === true;
 }
 
 function pushStatusPayload() {
-  return { configured: pushConfigured(), enabled: pushEnabled(), subscriptions: pushSubscriptions.length };
+  return {
+    configured: pushConfigured(),
+    keyMatch: pushKeyMatch(),
+    enabled: pushEnabled(),
+    subscriptions: pushSubscriptions.length,
+  };
 }
 
 async function sendPushToAll(payload) {
-  if (!pushEnabled() || !pushConfigured() || !pushSubscriptions.length) return { sent: 0, removed: 0 };
+  if (!pushEnabled() || !pushConfigured() || !pushSubscriptions.length) return { sent: 0, removed: 0, results: [] };
   const secret = readSecretFile();
   const publicKey = readConfig().vapidPublicKey;
   let sent = 0;
   let removed = 0;
   const keep = [];
-  for (const sub of pushSubscriptions) {
+  const results = [];
+  for (let index = 0; index < pushSubscriptions.length; index++) {
+    const sub = pushSubscriptions[index];
     try {
       const result = await sendPush(sub, payload, {
         privateKeyJwk: secret.vapidPrivateKey,
         publicKey,
-        subject: String(readConfig().pushSubject || 'mailto:anam@localhost'),
+        subject: String(readConfig().pushSubject || 'mailto:anam@example.com'),
       });
       if (result.status === 404 || result.status === 410) {
         removed++;
+        results.push({ index, status: result.status, error: 'subscription_gone' });
+        console.warn(`[push] subscription ${index} gone status=${result.status}`);
         continue;
       }
-      if (result.ok) sent++;
+      if (result.ok) {
+        sent++;
+        results.push({ index, status: result.status });
+      } else {
+        const reason = redactSecret(result.body || result.statusText || `HTTP ${result.status}`);
+        results.push({ index, status: result.status, error: reason });
+        console.warn(`[push] subscription ${index} rejected status=${result.status} body=${reason}`);
+      }
       keep.push(sub);
     } catch (err) {
-      console.warn('[push]', redactSecret(err.message));
+      const reason = redactSecret(err.message || 'push_error');
+      results.push({ index, status: 0, error: reason });
+      console.warn(`[push] subscription ${index} error: ${reason}`);
       keep.push(sub);
     }
   }
@@ -1194,7 +1219,7 @@ async function sendPushToAll(payload) {
     pushSubscriptions = keep;
     savePushSubscriptions();
   }
-  return { sent, removed };
+  return { sent, removed, results };
 }
 
 function notifyReply(replyText) {
@@ -2524,10 +2549,17 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url.pathname === '/api/push/vapid' && req.method === 'POST') {
-      if (pushConfigured()) return sendJson(res, 200, { ok: true, publicKey: readConfig().vapidPublicKey });
+      let payload = {};
+      try { payload = JSON.parse(await readBody(req) || '{}'); } catch { /* default */ }
+      const force = payload.force === true;
+      if (pushConfigured() && pushKeyMatch() !== false && !force) {
+        return sendJson(res, 200, { ok: true, publicKey: readConfig().vapidPublicKey });
+      }
       const keys = generateVapidKeys();
       writeSecretConfig({ vapidPrivateKey: keys.privateJwk });
-      writeConfigPatch({ vapidPublicKey: keys.publicKey });
+      writeConfigPatch({ vapidPublicKey: keys.publicKey, pushEnabled: false });
+      pushSubscriptions = [];
+      savePushSubscriptions();
       return sendJson(res, 200, { ok: true, publicKey: keys.publicKey });
     }
 
@@ -2567,8 +2599,9 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === '/api/push/test' && req.method === 'POST') {
       if (!pushConfigured()) return sendJson(res, 409, { error: 'push_not_configured' });
+      if (pushKeyMatch() === false) return sendJson(res, 409, { error: 'vapid_key_mismatch', message: 'VAPID 公钥与私钥不匹配，请重新生成并重新订阅。' });
       const result = await sendPushToAll({ title: 'Anam', body: '推送测试：连接成功。', tag: 'anam-test', url: '/' });
-      return sendJson(res, 200, { ok: true, ...result, ...pushStatusPayload() });
+      return sendJson(res, 200, { ok: result.sent > 0, ...result, ...pushStatusPayload() });
     }
 
     if (url.pathname === '/api/settings' && req.method === 'GET') {
@@ -2875,3 +2908,4 @@ setInterval(() => { void refreshWeather(); }, 60 * 60 * 1000).unref();
 server.listen(PORT, HOST, () => {
   console.log(`[companion] http://${HOST}:${PORT}  mode=${isMockMode() ? 'mock' : 'live'}  schema=v${SCHEMA}  history=${messages.length}  data=${DATA}  auth=${loadConfig().accessPassword ? 'on' : 'off'}`);
 });
+

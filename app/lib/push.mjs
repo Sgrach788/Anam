@@ -1,4 +1,4 @@
-// Web Push：VAPID JWT + RFC 8291 aes128gcm + RFC 8188 单一记录。
+﻿// Web Push：VAPID JWT + RFC 8291 aes128gcm + RFC 8188 单一记录。
 // 只用 Node 内置 crypto/fetch，不引入依赖。
 import crypto from 'node:crypto';
 
@@ -17,12 +17,21 @@ export function generateVapidKeys() {
   return { publicJwk, privateJwk, publicKey: b64u(rawPublic) };
 }
 
+export function publicKeyFromPrivate(privateJwk) {
+  if (!privateJwk?.x || !privateJwk?.y) return '';
+  return b64u(Buffer.concat([Buffer.from([4]), fromB64u(privateJwk.x), fromB64u(privateJwk.y)]));
+}
+
+export function vapidPairMatches(privateJwk, publicKey) {
+  return Boolean(publicKey) && publicKeyFromPrivate(privateJwk) === publicKey;
+}
+
 export function buildVapidJwt(audience, subject, privateKeyJwk, now = Date.now(), ttlSeconds = 12 * 3600) {
   const header = { typ: 'JWT', alg: 'ES256' };
   const payload = {
     aud: String(audience).replace(/\/+$/, ''),
     exp: Math.floor(now / 1000) + Math.max(60, Number(ttlSeconds) || 12 * 3600),
-    sub: String(subject || 'mailto:anam@localhost'),
+    sub: String(subject || 'mailto:anam@example.com'),
   };
   const input = `${b64u(JSON.stringify(header))}.${b64u(JSON.stringify(payload))}`;
   const key = crypto.createPrivateKey({ key: privateKeyJwk, format: 'jwk' });
@@ -82,23 +91,39 @@ export function decryptPayloadForTest(subscriptionPrivateKey, authSecret, body) 
   return { plain: plain.subarray(0, -1).toString('utf8'), recordSize, salt };
 }
 
-export async function sendPush(subscription, payload, { privateKeyJwk, publicKey, subject = 'mailto:anam@localhost' } = {}) {
+export async function sendPush(subscription, payload, { privateKeyJwk, publicKey, subject = 'mailto:anam@example.com' } = {}) {
   const endpoint = subscription?.endpoint;
   if (!endpoint) throw new Error('missing_endpoint');
   if (!privateKeyJwk || !publicKey) throw new Error('push_not_configured');
   const audience = new URL(endpoint).origin;
   const jwt = buildVapidJwt(audience, subject, privateKeyJwk);
   const body = encryptPayload(subscription, JSON.stringify(payload));
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      Authorization: `vapid t=${jwt}, k=${publicKey}`,
-      'Content-Encoding': 'aes128gcm',
-      'Content-Type': 'application/octet-stream',
-      TTL: '86400',
-      Urgency: 'normal',
-    },
-    body,
-  });
-  return { ok: response.ok, status: response.status };
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `vapid t=${jwt}, k=${publicKey}`,
+        'Content-Encoding': 'aes128gcm',
+        'Content-Type': 'application/octet-stream',
+        TTL: '86400',
+        Urgency: 'normal',
+      },
+      body,
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (err) {
+    const timeout = err?.name === 'TimeoutError' || err?.name === 'AbortError';
+    const wrapped = new Error(timeout ? 'push_timeout' : `push_network: ${err?.message || err}`);
+    wrapped.code = timeout ? 'push_timeout' : 'push_network';
+    throw wrapped;
+  }
+  const responseText = await response.text().catch(() => '');
+  return {
+    ok: response.ok,
+    status: response.status,
+    statusText: response.statusText || '',
+    body: String(responseText || '').slice(0, 400),
+  };
 }
+

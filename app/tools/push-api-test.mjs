@@ -35,6 +35,7 @@ await fetch(`${BASE}/api/push/subscribe`, { method: 'POST', headers: { 'content-
 await fetch(`${BASE}/api/push/subscribe`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(sub) });
 const status = await (await fetch(`${BASE}/api/push/status`)).json();
 check('订阅去重且默认开启', status.configured === true && status.enabled === true && status.subscriptions === 1, JSON.stringify(status));
+check('VAPID 公私钥匹配', status.keyMatch === true, JSON.stringify(status));
 const secret = JSON.parse(fs.readFileSync(path.join(DATA, 'secret.json'), 'utf8'));
 check('私钥只落 secret', Boolean(secret.vapidPrivateKey) && !JSON.stringify(status).includes('vapidPrivateKey'));
 await fetch(`${BASE}/api/push/unsubscribe`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint }) });

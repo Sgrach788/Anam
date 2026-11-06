@@ -88,7 +88,7 @@ Tian 提出问题
 |---|---|
 | 阶段 | **V2「表情包」进行中** |
 | 产品版本 | **0.2.44** |
-| SW 版本 | **companion-v44-2026-11-06** |
+| SW 版本 | **companion-v44-2026-11-06-p1** |
 | 数据 schema | **1** |
 | 运行方式 | Windows PC Node daemon + PWA |
 | 依赖 | **零 npm 依赖**（Node 内置模块） |
@@ -115,7 +115,7 @@ Tian 提出问题
   PATCH  = 本阶段第 N 次改版
   当前：0.2.44
 
-SW 版本：companion-v44-2026-11-06
+SW 版本：companion-v44-2026-11-06-p1
 数据 schema：1
 ```
 
@@ -546,11 +546,15 @@ memoryBlock
 ### Web Push
 
 - VAPID：P-256；私钥 `secret.json.vapidPrivateKey`，公钥 `config.json.vapidPublicKey`。
+- VAPID subject：`mailto:anam@example.com`。**不要用 `mailto:anam@localhost`**：Apple 会返回 403 `{"reason":"BadJwtToken"}`（v44-p1 实测根因）。
+- 公私钥匹配：`pushStatusPayload.keyMatch`；不匹配时 `/api/push/test` 返回 409，需重新生成并重新订阅。
 - 订阅：`app/data/push-subscriptions.jsonl`；按 endpoint 去重。
-- 发送：`lib/push.mjs`，VAPID JWT + RFC8291 aes128gcm；只依赖 Node crypto/fetch。
+- 发送：`lib/push.mjs`，VAPID JWT + RFC8291 aes128gcm；只依赖 Node crypto/fetch；10 秒超时。
+- `sendPushToAll` 返回每条订阅的 `status/error`，非 2xx 会记录 Apple 响应正文；测试接口不再静默。
 - 默认关闭；订阅时开启；410/404 清订阅。
 - 回复完成后推送；SW 前台可见时不弹。
 - 推送订阅文件不进 Git；VAPID 私钥不进备份；iOS 需 16.4+ 主屏 PWA。
+- 2026-11-06 真实测试：修复 subject 后 Apple 返回 **201**，`sent=1`；物理手机锁屏未由执行方直接确认。
 - 电脑关机推不了，是架构取舍。
 
 ### 天气
@@ -691,7 +695,7 @@ node tools\weather-test.mjs
 | usage-breakdown | 6/6 |
 | meme-test | 31/31 |
 | push | 6/6 |
-| push-api | 6/6 |
+| push-api | 7/7 |
 | weather | 7/7 |
 | v1-integration | 通过 |
 
@@ -734,8 +738,8 @@ node tools\weather-test.mjs
 - 没有内置 TLS；手机正式使用依赖 Tailscale。
 - `server.mjs` 较大，改动要定位函数，避免大范围重构。
 - 当前真实 embedding 未配置；P4 逻辑只在配置后生效。
-- v44 真机锁屏推送未在物理手机上验证；只做过 Node 加密/接口测试。
-- v44 真实 VAPID 未生成、城市未配置；默认推送关闭、天气不注入。
+- v44 真机锁屏推送未由执行方直接确认；接口实测 Apple 201、sent=1。
+- v44 真实 VAPID 已生成（keyMatch=true）、1 个 Apple 订阅、pushEnabled=true；天气城市仍未配置。
 
 ---
 
@@ -813,5 +817,6 @@ node tools\weather-test.mjs
 3. V4 是否包含可选“手”（文件/视觉操作电脑），还是只做多 AI？
 4. 登录限流保持 20 次/10 分钟，还是更严格？
 5. README 上传时，是否同时把 D14 的 ¥2 修正一起提交？
+
 
 
