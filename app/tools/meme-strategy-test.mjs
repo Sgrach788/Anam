@@ -1,4 +1,4 @@
-// 表情发送策略纯函数测试：默认值、固定骰子、边界、软频率文案。
+﻿// 表情发送策略纯函数测试：默认值、固定骰子、边界、软频率文案。
 // 用法：node app/tools/meme-strategy-test.mjs
 import {
   MEME_STRATEGY_DEFAULTS, memeStrategyFromConfig, memeStrategyPatch,
@@ -29,10 +29,10 @@ for (const patch of [{ probability: 101 }, { probability: -1 }, { probability: '
 check('非法策略参数被拒绝', invalid === 6, `invalid=${invalid}`);
 
 const soft = memeSoftFrequencyBlock(true);
-check('软提示包含 1/4 参考', soft.includes('每约 4 条') && soft.includes('不必精确计数'));
+check('软提示包含 2–3 条参考', soft.includes('每约 2–3 条') && soft.includes('不必精确计数'));
 check('软提示包含用户明确要求例外', soft.includes('用户明确要求时不受软频率参考约束'));
 check('软提示不向用户解释', soft.includes('不要向用户解释频率判断'));
-check('软提示包含补发条款', soft.includes('近期连续几条回复都没有配图'));
+check('软提示包含连续 2 条追赶', soft.includes('连续 2 条回复都没有配图'));
 check('软提示包含情绪触发条款', soft.includes('遇到玩笑、鼓励、庆祝、共情或轻松接话'));
 check('软提示包含三种输出教学', soft.includes('纯文字：') && soft.includes('文字+表情：') && soft.includes('只发表情：'));
 check('软提示关闭为空', memeSoftFrequencyBlock(false) === '');
@@ -45,3 +45,4 @@ for (const c of checks) {
 }
 console.log(`\n${checks.length - failed}/${checks.length} 通过`);
 process.exit(failed ? 1 : 0);
+

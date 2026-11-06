@@ -55,6 +55,9 @@ const STICKER_SENTENCE_RE = /(^|[。！？!?…\n])\s*[\[【]\s*表情\s*[\]】]
 
 export function sanitizeReply(text) {
   return String(text || '')
+    // 模型偶尔会把空占位 HTML 当正文吐出来；空 <p> 不能变成可见气泡。
+    .replace(/<p\b[^>]*>\s*(?:&nbsp;)?\s*<\/p>/giu, '')
+    .replace(/<p\b[^>]*>([\s\S]*?)<\/p>/giu, '$1')
     .replace(TIME_LABEL_RE, '')
     .replace(BARE_TIME_LABEL_RE, '')
     .replace(LEADING_BARE_TIME_RE, '')

@@ -478,16 +478,25 @@ function maybeSeparator(at) {
   lastAt = d;
 }
 
+function cleanBubbleText(text) {
+  return String(text || '')
+    .replace(/<p\b[^>]*>\s*(?:&nbsp;)?\s*<\/p>/giu, '')
+    .replace(/<p\b[^>]*>([\s\S]*?)<\/p>/giu, '$1')
+    .trim();
+}
+
 function addBubble(role, text, id, at) {
   if (id && rendered.has(id)) return rendered.get(id);
+  const clean = cleanBubbleText(text);
+  if (!clean) return null;
   maybeSeparator(at || new Date().toISOString());
-  const node = el('div', `msg ${role === 'user' ? 'me' : 'ai'}`, text || '');
+  const node = el('div', `msg ${role === 'user' ? 'me' : 'ai'}`, clean);
   if (id) {
     node.dataset.id = id;
     rendered.set(id, node);
   }
   list.appendChild(node);
-  updateInboxPreview(text, at);
+  updateInboxPreview(clean, at);
   scheduleScroll(role === 'user');
   return node;
 }
