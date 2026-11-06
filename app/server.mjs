@@ -10,6 +10,9 @@ import { buildStableSystemPrefix, buildSystemContent } from './lib/prompt.mjs';
 import { buildL1Context, L1_TOKEN_BUDGET } from './lib/context.mjs';
 import { PRODUCT_VERSION } from './lib/version.mjs';
 import { emptyBreakdown, normalizeBreakdown, sumBreakdown, cacheRate } from './lib/usage.mjs';
+import { dateContextLine } from './lib/calendar.mjs';
+import { buildWeatherLine, weatherFresh, weatherText } from './lib/weather.mjs';
+import { generateVapidKeys, sendPush } from './lib/push.mjs';
 import {
   MEME_MAX_BYTES, MEME_MAX_COUNT, MEME_STATIC_EDGE,
   isSafeMemeId, newMemeId, sanitizeLabel, sanitizeTags,
@@ -32,6 +35,8 @@ const EMOTION_LOG = path.join(DATA, 'emotion.jsonl');
 const MEME_LOG = path.join(DATA, 'memes.jsonl');
 const MEME_DIR = path.join(DATA, 'memes');
 const MEME_PREVIEW_DIR = path.join(MEME_DIR, 'previews');
+const WEATHER_CACHE_FILE = path.join(DATA, 'weather.json');
+const PUSH_LOG = path.join(DATA, 'push-subscriptions.jsonl');
 const MEME_PREVIEW_MAX_BYTES = 300 * 1024;
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -645,6 +650,8 @@ function buildPromptBundle(nowDate = new Date(), profile = loadProfile(), query 
   const catalogText = memeCatalog?.prompt || '';
   const nowLine = `现在是 ${formatNowLabel(nowDate)}（本地时间）。`;
   const signatureText = signatureBlock(profile);
+  const weatherText = weatherContextLine();
+  const dateText = dateContextLine(nowDate);
   const prompt = buildSystemContent({
     stablePrefix,
     memoryText,
@@ -652,6 +659,8 @@ function buildPromptBundle(nowDate = new Date(), profile = loadProfile(), query 
     memeText: catalogText,
     nowLine,
     signatureText,
+    weatherText,
+    dateText,
   });
   const l1 = contextMessages.reduce((sum, message) => sum + estimateTokens(message.content), 0);
   const breakdown = normalizeBreakdown({
@@ -659,8 +668,8 @@ function buildPromptBundle(nowDate = new Date(), profile = loadProfile(), query 
     memory: estimateTokens(memoryText),
     posts: estimateTokens(postsText),
     catalog: estimateTokens(catalogText),
-    // 签名每轮变化，归入 time 尾巴；六项总数仍与 prompt 对齐。
-    time: estimateTokens(nowLine) + estimateTokens(signatureText),
+    // 签名/天气/日期每轮可能变化，归入 time 尾巴；六项总数仍与 prompt 对齐。
+    time: estimateTokens(nowLine) + estimateTokens(signatureText) + estimateTokens(weatherText) + estimateTokens(dateText),
     l1,
   });
   return { prompt, breakdown };
@@ -1012,6 +1021,189 @@ function readConfig() {
   } catch {
     return {};
   }
+}
+
+function writeConfigPatch(update) {
+  const cfg = readConfig();
+  cfg.v = Number.isInteger(cfg.v) ? cfg.v : 1;
+  Object.assign(cfg, update);
+  const tmp = `${CONFIG_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2) + '\n', 'utf8');
+  fs.renameSync(tmp, CONFIG_FILE);
+  return cfg;
+}
+
+function readSecretFile() {
+  try {
+    return JSON.parse(fs.readFileSync(SECRET_FILE, 'utf8').replace(/^\uFEFF/, ''));
+  } catch {
+    return {};
+  }
+}
+
+// ---------- 天气 / 日期（volatile prompt 尾巴） ----------
+let weatherCache = null;
+try {
+  if (fs.existsSync(WEATHER_CACHE_FILE)) weatherCache = JSON.parse(fs.readFileSync(WEATHER_CACHE_FILE, 'utf8'));
+} catch { weatherCache = null; }
+
+function weatherCityConfig() {
+  const cfg = readConfig();
+  return {
+    city: String(cfg.weatherCity || '').slice(0, 60),
+    lat: Number(cfg.weatherLat),
+    lon: Number(cfg.weatherLon),
+  };
+}
+
+function saveWeatherCache(next) {
+  weatherCache = next;
+  const tmp = `${WEATHER_CACHE_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(next, null, 2) + '\n', 'utf8');
+  fs.renameSync(tmp, WEATHER_CACHE_FILE);
+}
+
+async function geocodeCity(city) {
+  const qs = new URLSearchParams({ name: city, count: '1', language: 'zh', format: 'json' });
+  const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${qs}`, { signal: AbortSignal.timeout(15000) });
+  if (!response.ok) throw new Error(`geocoding HTTP ${response.status}`);
+  const body = await response.json();
+  const hit = body?.results?.[0];
+  if (!hit) throw new Error('city_not_found');
+  return { name: hit.name || city, lat: Number(hit.latitude), lon: Number(hit.longitude) };
+}
+
+async function refreshWeather() {
+  const cfg = weatherCityConfig();
+  if (!cfg.city || !Number.isFinite(cfg.lat) || !Number.isFinite(cfg.lon)) return null;
+  const qs = new URLSearchParams({
+    latitude: String(cfg.lat), longitude: String(cfg.lon),
+    current: 'temperature_2m,weather_code',
+    daily: 'temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max',
+    timezone: 'auto', forecast_days: '1',
+  });
+  try {
+    const response = await fetch(`https://api.open-meteo.com/v1/forecast?${qs}`, { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) throw new Error(`weather HTTP ${response.status}`);
+    const body = await response.json();
+    const current = body?.current || {};
+    const daily = body?.daily || {};
+    const cache = {
+      fetchedAt: nowIso(),
+      city: cfg.city,
+      current: { temp: Number(current.temperature_2m), code: Number(current.weather_code) },
+      today: {
+        tempMax: Number(daily.temperature_2m_max?.[0]),
+        tempMin: Number(daily.temperature_2m_min?.[0]),
+        code: Number(daily.weather_code?.[0]),
+        rainChance: Number(daily.precipitation_probability_max?.[0]),
+      },
+    };
+    saveWeatherCache(cache);
+    return cache;
+  } catch (err) {
+    console.warn('[weather]', redactSecret(err.message));
+    return null;
+  }
+}
+
+function weatherContextLine() {
+  if (!weatherCityConfig().city) return '';
+  if (!weatherCache) return '';
+  return buildWeatherLine(weatherCache);
+}
+
+function weatherStatusPayload() {
+  const cfg = weatherCityConfig();
+  return {
+    city: cfg.city,
+    configured: Boolean(cfg.city && Number.isFinite(cfg.lat) && Number.isFinite(cfg.lon)),
+    cache: weatherCache ? {
+      fetchedAt: weatherCache.fetchedAt,
+      city: weatherCache.city,
+      current: weatherCache.current,
+      today: weatherCache.today,
+      fresh: weatherFresh(weatherCache),
+    } : null,
+  };
+}
+
+// ---------- Web Push ----------
+function loadPushSubscriptions() {
+  const rows = [];
+  const seen = new Set();
+  try {
+    for (const line of fs.readFileSync(PUSH_LOG, 'utf8').split('\n')) {
+      if (!line.trim()) continue;
+      const row = JSON.parse(line);
+      if (!row?.endpoint || seen.has(row.endpoint)) continue;
+      seen.add(row.endpoint);
+      rows.push(row);
+    }
+  } catch { /* no subscriptions */ }
+  return rows;
+}
+
+let pushSubscriptions = loadPushSubscriptions();
+
+function savePushSubscriptions() {
+  const tmp = `${PUSH_LOG}.tmp`;
+  fs.writeFileSync(tmp, pushSubscriptions.map((row) => JSON.stringify(row)).join('\n') + (pushSubscriptions.length ? '\n' : ''), 'utf8');
+  fs.renameSync(tmp, PUSH_LOG);
+}
+
+function pushConfigured() {
+  const secret = readSecretFile();
+  return Boolean(secret.vapidPrivateKey && readConfig().vapidPublicKey);
+}
+
+function pushEnabled() {
+  return readConfig().pushEnabled === true;
+}
+
+function pushStatusPayload() {
+  return { configured: pushConfigured(), enabled: pushEnabled(), subscriptions: pushSubscriptions.length };
+}
+
+async function sendPushToAll(payload) {
+  if (!pushEnabled() || !pushConfigured() || !pushSubscriptions.length) return { sent: 0, removed: 0 };
+  const secret = readSecretFile();
+  const publicKey = readConfig().vapidPublicKey;
+  let sent = 0;
+  let removed = 0;
+  const keep = [];
+  for (const sub of pushSubscriptions) {
+    try {
+      const result = await sendPush(sub, payload, {
+        privateKeyJwk: secret.vapidPrivateKey,
+        publicKey,
+        subject: String(readConfig().pushSubject || 'mailto:anam@localhost'),
+      });
+      if (result.status === 404 || result.status === 410) {
+        removed++;
+        continue;
+      }
+      if (result.ok) sent++;
+      keep.push(sub);
+    } catch (err) {
+      console.warn('[push]', redactSecret(err.message));
+      keep.push(sub);
+    }
+  }
+  if (removed) {
+    pushSubscriptions = keep;
+    savePushSubscriptions();
+  }
+  return { sent, removed };
+}
+
+function notifyReply(replyText) {
+  if (!pushEnabled() || !pushSubscriptions.length) return;
+  const body = String(replyText || '').replace(/\s+/gu, ' ').trim().slice(0, 100);
+  if (!body) return;
+  void sendPushToAll({ title: 'Anam', body, tag: 'anam-chat', url: '/' }).catch((err) => {
+    console.warn('[push] notify failed:', redactSecret(err.message));
+  });
 }
 
 function loadProfile() {
@@ -1565,6 +1757,7 @@ async function streamReply(res, userMsg, tokensIn) {
     userMsgId: userMsg.id,
     replyId: saved[0].id,
   });
+  notifyReply(saved.map((m) => messageText(m)).join(' '));
   emit('budget', { ...budgetState() });
   void maybeSummarize();
 
@@ -2294,6 +2487,90 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 201, { comment, aiComment, aiUnavailable: !aiComment });
     }
 
+    if (url.pathname === '/api/weather/status' && req.method === 'GET') {
+      return sendJson(res, 200, weatherStatusPayload());
+    }
+
+    if (url.pathname === '/api/weather/city' && req.method === 'POST') {
+      let payload = {};
+      try { payload = JSON.parse(await readBody(req) || '{}'); } catch { return sendJson(res, 400, { error: 'invalid_json' }); }
+      const city = String(payload.city || '').trim().slice(0, 60);
+      if (!city) {
+        writeConfigPatch({ weatherCity: '', weatherLat: null, weatherLon: null });
+        return sendJson(res, 200, { ok: true, ...weatherStatusPayload() });
+      }
+      let lat = Number(payload.lat);
+      let lon = Number(payload.lon);
+      let resolvedCity = city;
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        try {
+          const hit = await geocodeCity(city);
+          lat = hit.lat;
+          lon = hit.lon;
+          resolvedCity = hit.name;
+        } catch (err) {
+          return sendJson(res, 400, { error: 'city_not_found', message: err.message === 'city_not_found' ? '找不到这个城市。' : '城市查询失败，请稍后再试。' });
+        }
+      }
+      if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return sendJson(res, 400, { error: 'invalid_coordinates' });
+      writeConfigPatch({ weatherCity: resolvedCity, weatherLat: lat, weatherLon: lon });
+      await refreshWeather();
+      return sendJson(res, 200, { ok: true, ...weatherStatusPayload() });
+    }
+
+    if (url.pathname === '/api/weather/refresh' && req.method === 'POST') {
+      await refreshWeather();
+      return sendJson(res, 200, { ok: true, ...weatherStatusPayload() });
+    }
+
+    if (url.pathname === '/api/push/vapid' && req.method === 'POST') {
+      if (pushConfigured()) return sendJson(res, 200, { ok: true, publicKey: readConfig().vapidPublicKey });
+      const keys = generateVapidKeys();
+      writeSecretConfig({ vapidPrivateKey: keys.privateJwk });
+      writeConfigPatch({ vapidPublicKey: keys.publicKey });
+      return sendJson(res, 200, { ok: true, publicKey: keys.publicKey });
+    }
+
+    if (url.pathname === '/api/push/vapid-public-key' && req.method === 'GET') {
+      const publicKey = readConfig().vapidPublicKey;
+      if (!publicKey) return sendJson(res, 404, { error: 'push_not_configured' });
+      return sendJson(res, 200, { publicKey });
+    }
+
+    if (url.pathname === '/api/push/status' && req.method === 'GET') {
+      return sendJson(res, 200, pushStatusPayload());
+    }
+
+    if (url.pathname === '/api/push/subscribe' && req.method === 'POST') {
+      let payload = {};
+      try { payload = JSON.parse(await readBody(req) || '{}'); } catch { return sendJson(res, 400, { error: 'invalid_json' }); }
+      const endpoint = String(payload.endpoint || '').trim();
+      const p256dh = String(payload.keys?.p256dh || '').trim();
+      const auth = String(payload.keys?.auth || '').trim();
+      if (!/^https:\/\//u.test(endpoint) || endpoint.length > 2048 || !p256dh || !auth) return sendJson(res, 400, { error: 'invalid_subscription' });
+      pushSubscriptions = pushSubscriptions.filter((row) => row.endpoint !== endpoint);
+      pushSubscriptions.push({ endpoint, keys: { p256dh, auth }, at: nowIso() });
+      savePushSubscriptions();
+      writeConfigPatch({ pushEnabled: true });
+      return sendJson(res, 200, { ok: true, ...pushStatusPayload() });
+    }
+
+    if (url.pathname === '/api/push/unsubscribe' && req.method === 'POST') {
+      let payload = {};
+      try { payload = JSON.parse(await readBody(req) || '{}'); } catch { return sendJson(res, 400, { error: 'invalid_json' }); }
+      const endpoint = String(payload.endpoint || '').trim();
+      pushSubscriptions = pushSubscriptions.filter((row) => row.endpoint !== endpoint);
+      savePushSubscriptions();
+      if (!pushSubscriptions.length) writeConfigPatch({ pushEnabled: false });
+      return sendJson(res, 200, { ok: true, ...pushStatusPayload() });
+    }
+
+    if (url.pathname === '/api/push/test' && req.method === 'POST') {
+      if (!pushConfigured()) return sendJson(res, 409, { error: 'push_not_configured' });
+      const result = await sendPushToAll({ title: 'Anam', body: '推送测试：连接成功。', tag: 'anam-test', url: '/' });
+      return sendJson(res, 200, { ok: true, ...result, ...pushStatusPayload() });
+    }
+
     if (url.pathname === '/api/settings' && req.method === 'GET') {
       return sendJson(res, 200, publicSettings());
     }
@@ -2592,6 +2869,8 @@ const server = http.createServer(async (req, res) => {
 
 ensureDailyBackup();
 setInterval(ensureDailyBackup, 60 * 60 * 1000).unref();
+void refreshWeather();
+setInterval(() => { void refreshWeather(); }, 60 * 60 * 1000).unref();
 
 server.listen(PORT, HOST, () => {
   console.log(`[companion] http://${HOST}:${PORT}  mode=${isMockMode() ? 'mock' : 'live'}  schema=v${SCHEMA}  history=${messages.length}  data=${DATA}  auth=${loadConfig().accessPassword ? 'on' : 'off'}`);

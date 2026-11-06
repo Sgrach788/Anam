@@ -1128,6 +1128,54 @@
 - 产品 **0.2.43**；SW **v43**；schema **1**。
 - 未做：目录 30→50、2b、V3、记忆/表情逻辑改动。
 
+## v44：PWA 推送 + 天气/日期 + 软提示 + 速度归位 — 2026-11-06
+
+2a 观察期按 Tian 决定结束；本版不动目录扩容/输入等待/2B。
+
+### 1. PWA Web Push
+
+- 新 `app/lib/push.mjs`：VAPID JWT ES256 + RFC8291 aes128gcm，只用 Node crypto/fetch。
+- 私钥 `secret.json.vapidPrivateKey`，公钥 `config.json.vapidPublicKey`；默认推送关闭。
+- 新接口：`GET /api/push/status`、`GET /api/push/vapid-public-key`、`POST /api/push/vapid`、`POST /api/push/subscribe`、`POST /api/push/unsubscribe`、`POST /api/push/test`。
+- 订阅 `app/data/push-subscriptions.jsonl`，按 endpoint 去重；410/404 删除。
+- `streamReply` 完成后推送标题 Anam + 正文 100 字；SW 前台可见时不弹，点击聚焦/打开 `/`。
+- 终端「运行状态」子页面：生成密钥、开关、测试；默认未配置。
+- 测试：`push-test` 6/6（JWT/加密往返）、`push-api-test` 6/6（私钥不回传/去重/开关）。
+- 未做：物理手机锁屏推送验收（无实体机）。
+
+### 2. 天气
+
+- 新 `app/lib/weather.mjs`；Open-Meteo + geocoding，无 Key。
+- 城市/经纬度存 `config.json`；缓存 `app/data/weather.json`；启动/每小时刷新；失败保留旧缓存。
+- 终端「数据与存储」子页面配置城市；留空不注入。
+- prompt 尾巴在签名之后、日期之前；不超过 60 字；约 40 token。
+- 新接口：`GET /api/weather/status`、`POST /api/weather/city`、`POST /api/weather/refresh`。
+- 测试：`weather-test` 7/7。
+
+### 3. 日期
+
+- 新 `app/lib/calendar.mjs`：2026–2027 主要假日 + 24 节气；零网络。
+- 一行：星期 + 节日/节气 + 临近假日倒数；在天气之后、现在时间之前。
+- prompt 顺序测试 9/9。
+
+### 4. 表情软提示
+
+- `memeSoftFrequencyBlock` 仅在软提示开启时增加：
+  - “近期连续几条回复都没有配图，且当前有合适选择时，优先配 1 张。”
+  - “遇到玩笑、鼓励、庆祝、共情或轻松接话，有贴切的表情就可以配图。”
+- 概率/间隔/最多 1 张/优先级不变；`meme-strategy-test` 18/18。
+
+### 5. 终端规则 + 速度归位
+
+- 推送进「运行状态」子页面，城市进「数据与存储」子页面；终端主页仍只有 API + 消费。
+- 回复速度从终端 API 卡片移到 **AI 资料页**；接口/三档倍率/默认值不变。
+- 实测：ApiSection 内无 speed，`#aiProfileView` 内有 speed；当前配置 `slow`（用户已有设置）。
+
+### 测试
+
+- `dom-smoke` 66/66、`status-test` 12/12、`reply-test` 23/23、`l1-context-test` 7/7、`meme-chat-test` 20/20、`usage-breakdown-test` 6/6、`meme-test` 31/31、`v1-integration` 通过。
+- 产品 **0.2.44**；SW **companion-v44-2026-11-06**；schema **1**。
+
 
 
 

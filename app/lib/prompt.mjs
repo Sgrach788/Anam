@@ -25,7 +25,7 @@ export function buildStableSystemPrefix({ persona = '', profileText = '' } = {})
   ].filter(Boolean).join('\n\n');
 }
 
-// 易变尾巴：顺序固定为 memory → recent posts → meme catalog → now。
+// 易变尾巴：memory → recent posts → meme catalog → signature → weather/date → now。
 export function buildSystemContent({
   stablePrefix = '',
   memoryText = '',
@@ -33,6 +33,8 @@ export function buildSystemContent({
   memeText = '',
   nowLine = '',
   signatureText = '',
+  weatherText = '',
+  dateText = '',
 } = {}) {
   return [
     stablePrefix,
@@ -40,6 +42,8 @@ export function buildSystemContent({
     recentPostsText,
     memeText,
     signatureText,
+    weatherText,
+    dateText,
     nowLine,
   ].filter(Boolean).join('\n\n');
 }

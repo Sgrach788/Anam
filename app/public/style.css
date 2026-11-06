@@ -1173,3 +1173,7 @@ body.console-open #consolePanel .console-content { padding-bottom: calc(env(safe
 .jump-bottom { display: flex; align-items: center; justify-content: center; line-height: 1; padding: 0; }
 .jump-bottom svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .tab-badge, .conversation-badge { display: flex; align-items: center; justify-content: center; line-height: 1; padding: 0 5px; box-sizing: border-box; }
+
+/* v44：AI 资料页速度选择、终端推送/天气控件 */
+.profile-page .field select { min-height: 44px; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; outline: none; background: var(--bg); color: var(--text); font: inherit; }
+#pushHint, #weatherState { overflow-wrap: anywhere; }

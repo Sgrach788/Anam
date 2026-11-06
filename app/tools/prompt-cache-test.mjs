@@ -37,6 +37,20 @@ check('尾巴顺序 memory < posts < catalog < now',
   && a.indexOf('CATALOG-A') < a.indexOf('NOW-A'));
 check('稳定前缀在尾巴之前', a.indexOf(stable) === 0);
 check('不同尾巴不改变稳定前缀', a.slice(0, stable.length) === b.slice(0, stable.length));
+const fullTail = buildSystemContent({
+  stablePrefix: stable,
+  memoryText: 'MEMORY',
+  recentPostsText: 'POSTS',
+  memeText: 'CATALOG',
+  signatureText: 'SIGNATURE',
+  weatherText: 'WEATHER',
+  dateText: 'DATE',
+  nowLine: 'NOW',
+});
+check('天气/日期在签名之后、现在之前',
+  fullTail.indexOf('SIGNATURE') < fullTail.indexOf('WEATHER')
+  && fullTail.indexOf('WEATHER') < fullTail.indexOf('DATE')
+  && fullTail.indexOf('DATE') < fullTail.indexOf('NOW'));
 
 let failed = 0;
 for (const c of checks) {

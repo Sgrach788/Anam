@@ -1,6 +1,6 @@
-﻿// Service Worker：缓存应用外壳，API 一律不走缓存。
+// Service Worker：缓存应用外壳，API 一律不走缓存。
 // 前端有改动时把 VERSION 加一（浏览器下次导航会拉新 sw.js 并换缓存）。
-const VERSION = 'companion-v43-2026-11-05';
+const VERSION = 'companion-v44-2026-11-06';
 
 const SHELL = [
   '/',
@@ -107,3 +107,42 @@ async function cacheFirst(event) {
     headers: { 'content-type': 'text/plain; charset=utf-8' },
   });
 }
+
+// v44：Web Push。前台可见时不重复弹；点击聚焦已有窗口。
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try { payload = event.data?.json() || {}; } catch { payload = { body: event.data?.text() || '' }; }
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    if (clients.some((client) => client.visibilityState === 'visible')) return;
+    await self.registration.showNotification(payload.title || 'Anam', {
+      body: String(payload.body || '').slice(0, 160),
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: payload.tag || 'anam-chat',
+      data: { url: payload.url || '/' },
+    });
+  })());
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || '/';
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const existing = clients.find((client) => client.url.startsWith(self.location.origin));
+    if (existing) {
+      await existing.focus();
+      return;
+    }
+    await self.clients.openWindow(target);
+  })());
+});
+
+// 浏览器换订阅时，交给页面重新订阅并保存（服务端需要口令，SW 不直接持有 token）。
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clients) client.postMessage({ type: 'push-resubscribe' });
+  })());
+});

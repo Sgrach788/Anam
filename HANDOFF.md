@@ -1,4 +1,4 @@
-﻿# Companion — 项目交接稿（截至 v43 / 0.2.43）
+﻿# Companion — 项目交接稿（截至 v44 / 0.2.44）
 
 > 用途：给下一个接手本项目的 AI 或开发者。
 > 本文件已随项目文档同步到私有 GitHub；本地路径为 `D:\Companion\HANDOFF.md`。
@@ -37,7 +37,7 @@ Tian 提出问题
 
 ### 0.2 另一个 AI 回答问题时必须遵守
 
-1. 先确认当前版本（产品 0.2.43 / SW v43 / schema 1）和观察期状态；
+1. 先确认当前版本（产品 0.2.44 / SW v44 / schema 1）和观察期状态；
 2. 先查 `DECISIONS.md`，与旧 `roadmap.md` 冲突时以 DECISIONS 为准；
 3. 不要建议恢复 V5/V6、圈子、群组、多租户；
 4. 不要建议在 2a 观察期改表情目录、回复组合、输入等待；
@@ -87,19 +87,22 @@ Tian 提出问题
 | 项 | 当前值 |
 |---|---|
 | 阶段 | **V2「表情包」进行中** |
-| 产品版本 | **0.2.43** |
-| SW 版本 | **companion-v43-2026-11-05** |
+| 产品版本 | **0.2.44** |
+| SW 版本 | **companion-v44-2026-11-06** |
 | 数据 schema | **1** |
 | 运行方式 | Windows PC Node daemon + PWA |
 | 依赖 | **零 npm 依赖**（Node 内置模块） |
 | 表情库 | 44 张全部启用；目录 30、等待 14、待审 0 |
 | 预算 | **¥2/天**（`DAILY_BUDGET_YUAN` 可覆盖） |
 | 输出上限 | **500**（下限 256；P3 推理占比 58.7% 后从 800 收紧） |
-| 回复速度 | 默认 `normal`，可切慢/快 |
+| 回复速度 | 默认 `normal`，可切慢/快；UI 在 AI 资料页 |
+| 推送 | 默认关闭；VAPID 按需生成；订阅存本地 |
+| 天气 | 城市可选；Open-Meteo；未配置不注入 |
+| 日期 | 星期 + 节假日/节气，静态 |
 | 最近真模型 reasoning 实测 | 122 / 208 = **58.7%** |
-| 当前观察期 | **2a**，冻结表情扩容/输入等待/2B |
+| 当前观察期 | **2a 已结束**（2026-11-06）；V2 收口批次未开始 |
 
-> `v43` 是第 43 次发布，不是 V4.3。产品 `0.2.43` = 未公开发布 `. V2 阶段 . 第 43 次改版`。
+> `v44` 是第 44 次发布，不是 V4.4。产品 `0.2.44` = 未公开发布 `. V2 阶段 . 第 44 次改版`。
 
 ---
 
@@ -110,9 +113,9 @@ Tian 提出问题
   0      = 尚未公开发布
   MINOR  = 阶段（V2 => 2）
   PATCH  = 本阶段第 N 次改版
-  当前：0.2.43
+  当前：0.2.44
 
-SW 版本：companion-v43-2026-11-05
+SW 版本：companion-v44-2026-11-06
 数据 schema：1
 ```
 
@@ -191,20 +194,11 @@ V4 之后不自动进入 V5/V6；只做维护和按需讨论。
 - 发照片 + caption；
 - 不改 AI 自动选图逻辑。
 
-**2a 观察期（当前冻结）**
+**2a 观察期（已结束，2026-11-06）**
 
-- 不改目录 30→50；
-- 不新增 6 张（搞怪/卖萌/喜欢/无语/疲惫/疑惑）；
-- 不做输入等待；
-- 不做 Phase 2B；
-- 观察她的回复风格与选图行为。
-
-**观察期结束后**
-
-1. 目录 30→50；
-2. 新增 6 张，批量导入 + 终端审核；
-3. 输入等待；
-4. Phase 2B（如批准）。
+- 观察期结束；V2 收口批次尚未开始；
+- 目录 30→50、新增 6 张、输入等待、Phase 2B 都放到下一批；
+- v44 不改这些行为。
 
 ### 3.5 V3 · 会想你（未开始）
 
@@ -261,6 +255,7 @@ V4 之后不自动进入 V5/V6；只做维护和按需讨论。
 | v41 | 加载更多、回到底部、未读、终端目录化 | ✅ |
 | v42 | 拖动收键盘、裸时间清理、会话行未读、终端置顶/无退出/返回 | ✅ |
 | v43 | 预算 ¥2、P3 maxTokens 500、P4 embedding 按需、速度三档、SVG V 按钮、徽章 flex | ✅ |
+| v44 | Web Push、天气/日期上下文、软提示补发/情绪、速度移至 AI 资料、推送/天气子页面 | ✅ |
 
 ### 4.1 已完成的关键数字
 
@@ -316,7 +311,10 @@ D:\Companion\
 │   │   ├── context.mjs        # P1 L1 3000 token
 │   │   ├── memes.mjs          # 表情 ID/格式/目录/策略
 │   │   ├── usage.mjs          # P2 费用拆解
-│   │   ├── version.mjs        # 产品版本 0.2.43
+│   │   ├── weather.mjs        # Open-Meteo 缓存/天气短句
+│   │   ├── calendar.mjs       # 星期/假日/节气
+│   │   ├── push.mjs           # VAPID JWT/RFC8291 加密
+│   │   ├── version.mjs        # 产品版本 0.2.44
 │   │   └── v1.mjs             # 记忆检索、情绪、元数据校验
 │   ├── public\                # PWA 静态壳
 │   │   ├── index.html
@@ -382,6 +380,15 @@ D:\Companion\
 | `GET /api/events` | 长连接 SSE + 环形续传 |
 | `GET/POST /api/settings` | 模型/Key/Embedding 设置 |
 | `POST /api/settings/reply-speed` | slow/normal/fast |
+| `GET /api/weather/status` | 城市/缓存状态 |
+| `POST /api/weather/city` | 城市/坐标，触发刷新 |
+| `POST /api/weather/refresh` | 立即刷新天气 |
+| `GET /api/push/status` | VAPID/开关/订阅数 |
+| `GET /api/push/vapid-public-key` | 推送公钥 |
+| `POST /api/push/vapid` | 生成 VAPID 密钥 |
+| `POST /api/push/subscribe` | 保存订阅并开启 |
+| `POST /api/push/unsubscribe` | 删除订阅 |
+| `POST /api/push/test` | 测试推送 |
 | `POST /api/settings/test` | 真模型连接测试 |
 | `POST /api/settings/embedding/test` | Embedding 连接测试 |
 | `GET /api/provider/balance` | DeepSeek 余额 |
@@ -496,11 +503,14 @@ memoryBlock
 → recentUserPostsBlock
 → meme catalog
 → signature（每轮可能变）
+→ weather（可选）
+→ date（星期/假日/节气）
 → 现在时间（最后）
 ```
 
 **规则**：任何新增 prompt 内容必须声明 stable/volatile；volatile 只能放尾巴。  
-`profileBlock` 里的签名已被移到 `signatureBlock()`，否则缓存会失效。
+`profileBlock` 里的签名已被移到 `signatureBlock()`，否则缓存会失效。  
+天气/日期在 v44 加入，均属 volatile；现在时间必须最后。
 
 ### 9.3 时间/表情清理
 
@@ -517,7 +527,7 @@ memoryBlock
 ## 10. 表情包系统
 
 - 库：44 张；目录 30；等待 14；待审 0。
-- 只启用审核通过的；目录上限 30（计划 50，但 2a 期间冻结）。
+- 只启用审核通过的；目录上限 30（50 的扩容在 V2 收口批次）。
 - 发送策略：
   - 概率默认 100%；
   - 最小间隔 2 条完整 AI 回复；
@@ -528,6 +538,37 @@ memoryBlock
 - 记录无 text；上下文/inbox 派生 `[表情] alt`。
 - UI：预览优先→原图；加载骨架为空盒、固定尺寸、不跳位；失败显示 `[表情] 名字`。
 - 手动发送/照片是 Phase 2B，未开始。
+
+---
+
+## 10.1 v44 推送 / 天气 / 日期 / 速度
+
+### Web Push
+
+- VAPID：P-256；私钥 `secret.json.vapidPrivateKey`，公钥 `config.json.vapidPublicKey`。
+- 订阅：`app/data/push-subscriptions.jsonl`；按 endpoint 去重。
+- 发送：`lib/push.mjs`，VAPID JWT + RFC8291 aes128gcm；只依赖 Node crypto/fetch。
+- 默认关闭；订阅时开启；410/404 清订阅。
+- 回复完成后推送；SW 前台可见时不弹。
+- 推送订阅文件不进 Git；VAPID 私钥不进备份；iOS 需 16.4+ 主屏 PWA。
+- 电脑关机推不了，是架构取舍。
+
+### 天气
+
+- Open-Meteo；城市/经纬度存 `config.json`；缓存 `app/data/weather.json`。
+- 启动/每小时刷新；失败保留旧缓存；无城市不注入。
+- 终端「数据与存储」子页面配置；天气行在 prompt 尾巴、签名之后、日期之前。
+
+### 日期
+
+- `lib/calendar.mjs` 内置 2026–2027 主要假日 + 24 节气；零网络。
+- 一行：星期 + 节日/节气 + 临近假日倒数。
+- 与天气一起在现在时间之前；现在时间始终最后。
+
+### 速度
+
+- 三档存 `config.json.replySpeed`；接口不变。
+- UI 已从终端 API 卡片移到 **AI 资料页**；终端主页仍只有 API + 消费两张卡。
 
 ---
 
@@ -630,9 +671,12 @@ node tools\status-test.mjs
 node tools\usage-breakdown-test.mjs
 node tools\reply-test.mjs
 node tools\embedding-policy-test.mjs
+node tools\push-test.mjs
+node tools\push-api-test.mjs
+node tools\weather-test.mjs
 ```
 
-当前 v43 结果：
+当前 v44 结果：
 
 | 测试 | 结果 |
 |---|---|
@@ -640,12 +684,15 @@ node tools\embedding-policy-test.mjs
 | embedding-policy | 6/6 |
 | status | 12/12 |
 | dom-smoke | 66/66 |
-| prompt-cache | 8/8 |
+| prompt-cache | 9/9 |
 | l1-context | 7/7 |
 | meme-chat | 20/20 |
-| meme-strategy | 16/16 |
+| meme-strategy | 18/18 |
 | usage-breakdown | 6/6 |
 | meme-test | 31/31 |
+| push | 6/6 |
+| push-api | 6/6 |
+| weather | 7/7 |
 | v1-integration | 通过 |
 
 真实模型测试会花钱：`live-*`；不要在未确认时运行。
@@ -659,7 +706,7 @@ node tools\embedding-policy-test.mjs
 3. 不要引入 npm 依赖；保持零依赖。
 4. 不要接 AstrBot/QQ，不要加第三方平台。
 5. 不恢复 V5/V6；群组/多租户不做。
-6. 2a 观察期内不改目录、不新增表情、不做输入等待、不做 2B。
+6. 2a 已结束；V2 收口批次（目录扩容、输入等待、2B）仍需明确启动，不要顺手做。
 7. 改 prompt 必须区分 stable/volatile；保持 P0 缓存前缀。
 8. 不要破坏 L1 3000 token 和最新一轮保底。
 9. sticker 记录不写 `text`；不要反向恢复。
@@ -687,6 +734,8 @@ node tools\embedding-policy-test.mjs
 - 没有内置 TLS；手机正式使用依赖 Tailscale。
 - `server.mjs` 较大，改动要定位函数，避免大范围重构。
 - 当前真实 embedding 未配置；P4 逻辑只在配置后生效。
+- v44 真机锁屏推送未在物理手机上验证；只做过 Node 加密/接口测试。
+- v44 真实 VAPID 未生成、城市未配置；默认推送关闭、天气不注入。
 
 ---
 
@@ -717,9 +766,11 @@ node tools\embedding-policy-test.mjs
 - **不打包插件代码，不连接 AstrBot/QQ**；
 - 本项目是原生重写，不是插件运行器。
 
-### 17.4 模型
+### 17.4 模型与数据源
 
 - DeepSeek API（`deepseek-flash`）；Key 只保存在本机服务端，不进仓库。
+- 天气与地理编码：Open-Meteo（免费、无 Key）；只发送城市/坐标，不发送聊天内容。
+- Web Push：浏览器 Push Service（Apple/Google/Mozilla）；只发送通知标题/正文。
 
 ---
 
@@ -762,4 +813,5 @@ node tools\embedding-policy-test.mjs
 3. V4 是否包含可选“手”（文件/视觉操作电脑），还是只做多 AI？
 4. 登录限流保持 20 次/10 分钟，还是更严格？
 5. README 上传时，是否同时把 D14 的 ¥2 修正一起提交？
+
 

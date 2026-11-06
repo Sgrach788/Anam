@@ -45,6 +45,15 @@ const rowData = document.getElementById('rowData');
 const rowStatus = document.getElementById('rowStatus');
 const rowAdvanced = document.getElementById('rowAdvanced');
 const apiHost = document.getElementById('apiHost');
+const pushState = document.getElementById('pushState');
+const pushHint = document.getElementById('pushHint');
+const pushToggle = document.getElementById('pushToggle');
+const pushTest = document.getElementById('pushTest');
+const pushGenerate = document.getElementById('pushGenerate');
+const weatherCity = document.getElementById('weatherCity');
+const weatherState = document.getElementById('weatherState');
+const weatherSave = document.getElementById('weatherSave');
+const weatherRefresh = document.getElementById('weatherRefresh');
 const backupInfo = document.getElementById('backupInfo');
 const dataInfo = document.getElementById('dataInfo');
 const advancedInfo = document.getElementById('advancedInfo');
@@ -1034,6 +1043,96 @@ async function loadUsageBreakdown() {
   }
 }
 
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/gu, '+').replace(/_/gu, '/');
+  const raw = atob(base64);
+  return Uint8Array.from(raw, (char) => char.charCodeAt(0));
+}
+
+let pushInfo = { configured: false, enabled: false, subscriptions: 0 };
+
+async function loadPushStatus() {
+  try {
+    const response = await apiFetch('/api/push/status');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    pushInfo = await response.json();
+    pushState.textContent = !pushInfo.configured
+      ? '未配置 VAPID 密钥'
+      : `${pushInfo.enabled ? '已开启' : '未开启'} · ${pushInfo.subscriptions} 个订阅`;
+    pushGenerate.hidden = pushInfo.configured;
+    pushToggle.hidden = !pushInfo.configured;
+    pushTest.hidden = !pushInfo.configured;
+    pushTest.disabled = !pushInfo.configured || !pushInfo.subscriptions;
+    pushToggle.textContent = pushInfo.enabled ? '关闭推送' : '开启推送';
+  } catch {
+    pushState.textContent = '读取失败';
+  }
+}
+
+async function enablePush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    throw new Error('当前浏览器不支持推送；iOS 需 16.4+ 且从主屏幕打开');
+  }
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') throw new Error('没有获得通知权限');
+  const keyResponse = await apiFetch('/api/push/vapid-public-key');
+  if (!keyResponse.ok) throw new Error('推送密钥尚未生成');
+  const { publicKey } = await keyResponse.json();
+  const registration = await navigator.serviceWorker.ready;
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+  }
+  const response = await apiFetch('/api/push/subscribe', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ endpoint: subscription.endpoint, keys: subscription.toJSON().keys }),
+  });
+  if (!response.ok) throw new Error(`订阅保存失败 HTTP ${response.status}`);
+  await loadPushStatus();
+}
+
+async function disablePush() {
+  const registration = await navigator.serviceWorker?.ready;
+  const subscription = await registration?.pushManager?.getSubscription();
+  if (subscription) {
+    await subscription.unsubscribe().catch(() => {});
+    await apiFetch('/api/push/unsubscribe', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ endpoint: subscription.endpoint }),
+    }).catch(() => {});
+  }
+  await loadPushStatus();
+}
+
+async function loadWeatherStatus() {
+  try {
+    const response = await apiFetch('/api/weather/status');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    weatherCity.value = data.city || '';
+    weatherState.textContent = data.configured
+      ? `${data.city}${data.cache?.fetchedAt ? ` · ${new Date(data.cache.fetchedAt).toLocaleString('zh-CN')}` : ' · 等待首次更新'}`
+      : '未配置';
+  } catch {
+    weatherState.textContent = '读取失败';
+  }
+}
+
+async function loadReplySpeedSetting() {
+  try {
+    const response = await apiFetch('/api/settings');
+    if (!response.ok) return;
+    const info = await response.json();
+    replySpeed.value = info.replySpeed || 'normal';
+  } catch { /* 保持默认 */ }
+}
+
 statusUpdateBtn.addEventListener('click', () => {
   // 红线：有未发送输入或流式回复时绝不刷新。
   if (input.value.trim() || busy || awaitJob) {
@@ -1041,6 +1140,89 @@ statusUpdateBtn.addEventListener('click', () => {
     return;
   }
   location.href = '/reset.html';
+});
+
+pushGenerate.addEventListener('click', async () => {
+  pushGenerate.disabled = true;
+  try {
+    const response = await apiFetch('/api/push/vapid', { method: 'POST' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    toast('推送密钥已生成');
+    await loadPushStatus();
+  } catch (err) {
+    toast(`生成失败：${err.message}`);
+  } finally {
+    pushGenerate.disabled = false;
+  }
+});
+
+pushToggle.addEventListener('click', async () => {
+  pushToggle.disabled = true;
+  try {
+    if (pushInfo.enabled) await disablePush();
+    else await enablePush();
+    setPushToggleLabel();
+  } catch (err) {
+    toast(`推送操作失败：${err.message}`);
+  } finally {
+    pushToggle.disabled = false;
+  }
+});
+
+pushTest.addEventListener('click', async () => {
+  try {
+    const response = await apiFetch('/api/push/test', { method: 'POST' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
+    toast(`测试推送：${data.sent || 0} 条`);
+  } catch (err) {
+    toast(`测试失败：${err.message}`);
+  }
+});
+
+function setPushToggleLabel() {
+  pushToggle.textContent = pushInfo.enabled ? '关闭推送' : '开启推送';
+}
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type === 'push-resubscribe' && pushInfo.configured) {
+      enablePush().catch((err) => toast(`推送重新订阅失败：${err.message}`));
+    }
+  });
+}
+
+weatherSave.addEventListener('click', async () => {
+  weatherSave.disabled = true;
+  try {
+    const response = await apiFetch('/api/weather/city', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ city: weatherCity.value.trim() }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
+    toast(weatherCity.value.trim() ? '城市已保存' : '天气已关闭');
+    await loadWeatherStatus();
+  } catch (err) {
+    toast(`城市保存失败：${err.message}`);
+  } finally {
+    weatherSave.disabled = false;
+  }
+});
+
+weatherRefresh.addEventListener('click', async () => {
+  weatherRefresh.disabled = true;
+  try {
+    const response = await apiFetch('/api/weather/refresh', { method: 'POST' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    toast('天气已更新');
+    await loadWeatherStatus();
+  } catch (err) {
+    toast(`天气更新失败：${err.message}`);
+  } finally {
+    weatherRefresh.disabled = false;
+  }
 });
 
 const TERMINAL_MODULES = ['memes', 'memory', 'backup', 'data', 'status', 'advanced'];
@@ -1106,8 +1288,13 @@ function renderTerminalPages() {
 async function loadTerminalModule(module) {
   if (module === 'memes') await loadMemes({ render: true });
   else if (module === 'memory') await loadMemory('');
-  else if (module === 'status') await loadStatus();
-  else renderTerminalPages();
+  else if (module === 'status') {
+    await loadStatus();
+    await loadPushStatus();
+  } else if (module === 'data') {
+    renderTerminalPages();
+    await loadWeatherStatus();
+  } else renderTerminalPages();
 }
 
 function showTerminalModule(module) {
@@ -1444,7 +1631,7 @@ function switchMainView(view, { keepScroll = false } = {}) {
     consolePanel.classList.remove('mobile-page');
     consolePanel.hidden = true;
   }
-  if (view === 'ai-profile') { refreshAiInfo(); loadMemes(); }
+  if (view === 'ai-profile') { refreshAiInfo(); loadMemes(); void loadReplySpeedSetting(); }
 }
 
 tabChat.addEventListener('click', () => switchMainView('inbox'));

@@ -138,6 +138,7 @@ const ids = [
   'apiModeBadge', 'apiModel', 'apiKeyState', 'apiHost', 'balanceRefresh', 'balanceValue', 'balanceStatus',
   'usageDay', 'usageSpend', 'usageTokens', 'usageCalls', 'usageLimit', 'usageBar', 'usageNote', 'usageBreakdown', 'statusVersionLine', 'statusUpdateHint', 'statusUpdateBtn', 'statusDetails',
   'terminalDirectory', 'apiSection', 'usageSection', 'balanceSection', 'statusSection', 'memorySection', 'backupSection', 'dataSection', 'advancedSection', 'futureSection',
+  'pushState', 'pushHint', 'pushToggle', 'pushTest', 'pushGenerate', 'weatherCity', 'weatherState', 'weatherSave', 'weatherRefresh',
   'rowMemes', 'rowMemory', 'rowBackup', 'rowData', 'rowStatus', 'rowAdvanced', 'backupInfo', 'dataInfo', 'advancedInfo',
   'previewV1', 'previewV2', 'previewV3', 'previewV4',
   'previewList', 'previewBtn',
