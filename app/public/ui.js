@@ -15,6 +15,11 @@ const photoFile = document.getElementById('photoFile');
 const stickerPicker = document.getElementById('stickerPicker');
 const stickerPickerGrid = document.getElementById('stickerPickerGrid');
 const stickerPickerClose = document.getElementById('stickerPickerClose');
+const photoPreview = document.getElementById('photoPreview');
+const photoPreviewImage = document.getElementById('photoPreviewImage');
+const photoCaption = document.getElementById('photoCaption');
+const photoPreviewCancel = document.getElementById('photoPreviewCancel');
+const photoPreviewSend = document.getElementById('photoPreviewSend');
 const appEl = document.getElementById('app');
 const input = document.getElementById('input');
 const sendBtn = document.getElementById('send');
@@ -531,6 +536,26 @@ function addImageBubble(message) {
   const caption = el('div', 'message-photo-caption', String(message.caption || ''));
   node.appendChild(image);
   if (message.caption) node.appendChild(caption);
+  if (message.role === 'user' && photoId) {
+    const remove = el('button', 'image-delete', '×');
+    remove.type = 'button';
+    remove.setAttribute('aria-label', '删除这张图片');
+    remove.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      if (!globalThis.confirm('删除这张图片和本地文件？')) return;
+      try {
+        const response = await apiFetch(`/api/messages/${encodeURIComponent(message.id)}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        removeBubble(message.id);
+        loadedMessages = loadedMessages.filter((item) => item.id !== message.id);
+        writeMessageCache();
+        toast('图片和文件已删除');
+      } catch (err) {
+        toast(`删除失败：${err.message}`);
+      }
+    });
+    node.appendChild(remove);
+  }
   if (message.id) {
     node.dataset.id = message.id;
     rendered.set(message.id, node);
@@ -659,6 +684,8 @@ async function photoToDataUrl(file) {
   return canvas.toDataURL('image/jpeg', 0.88);
 }
 
+let pendingPhotoDataUrl = '';
+
 photoFile.addEventListener('change', async () => {
   const file = photoFile.files?.[0];
   photoFile.value = '';
@@ -672,8 +699,28 @@ photoFile.addEventListener('change', async () => {
     return;
   }
   try {
-    const dataUrl = await photoToDataUrl(file);
-    const caption = input.value.trim();
+    pendingPhotoDataUrl = await photoToDataUrl(file);
+    photoPreviewImage.src = pendingPhotoDataUrl;
+    photoCaption.value = input.value.trim();
+    photoPreview.hidden = false;
+    photoCaption.focus();
+  } catch (err) {
+    toast(`读图失败：${err.message}`);
+  }
+});
+
+photoPreviewCancel.addEventListener('click', () => {
+  photoPreview.hidden = true;
+  pendingPhotoDataUrl = '';
+});
+
+photoPreviewSend.addEventListener('click', async () => {
+  if (!pendingPhotoDataUrl) return;
+  const dataUrl = pendingPhotoDataUrl;
+  const caption = photoCaption.value.trim();
+  photoPreview.hidden = true;
+  pendingPhotoDataUrl = '';
+  try {
     const response = await apiFetch('/api/photos', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -2760,6 +2807,10 @@ function handleFrame({ event, data, id }) {
     rememberMessage(data);
     if (activeView === 'chat') markChatRead();
     else updateUnreadBadge();
+  } else if (event === 'message-deleted') {
+    removeBubble(data.id);
+    loadedMessages = loadedMessages.filter((item) => item.id !== data.id);
+    writeMessageCache();
   } else if (event === 'done') {
     if (data.jobId === awaitJob) { awaitJob = null; loadHeaderProfile(); }
   } else if (event === 'budget') {

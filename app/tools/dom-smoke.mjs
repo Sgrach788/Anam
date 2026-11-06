@@ -1,4 +1,4 @@
-// 前端回归：最小 DOM 垫片 + 真实前端模块（api.js + ui.js），自己起一个 mock 服务。
+﻿// 前端回归：最小 DOM 垫片 + 真实前端模块（api.js + ui.js），自己起一个 mock 服务。
 // 覆盖：历史渲染、时间轴分隔、人格面板、复制、发送、失败重试、正在输入。
 // 用法：node app/tools/dom-smoke.mjs
 import fs from 'node:fs';
@@ -139,7 +139,7 @@ const ids = [
   'usageDay', 'usageSpend', 'usageTokens', 'usageCalls', 'usageLimit', 'usageBar', 'usageNote', 'usageBreakdown', 'statusVersionLine', 'statusUpdateHint', 'statusUpdateBtn', 'statusDetails',
   'terminalDirectory', 'apiSection', 'usageSection', 'balanceSection', 'statusSection', 'memorySection', 'backupSection', 'dataSection', 'advancedSection', 'futureSection',
   'pushState', 'pushHint', 'pushToggle', 'pushTest', 'pushGenerate', 'weatherCity', 'weatherState', 'weatherSave', 'weatherRefresh',
-  'stickerBtn', 'stickerPicker', 'stickerPickerGrid', 'stickerPickerClose', 'photoBtn', 'photoFile',
+  'stickerBtn', 'stickerPicker', 'stickerPickerGrid', 'stickerPickerClose', 'photoBtn', 'photoFile', 'photoPreview', 'photoPreviewImage', 'photoCaption', 'photoPreviewCancel', 'photoPreviewSend',
   'rowMemes', 'rowMemory', 'rowBackup', 'rowData', 'rowStatus', 'rowAdvanced', 'backupInfo', 'dataInfo', 'advancedInfo',
   'previewV1', 'previewV2', 'previewV3', 'previewV4',
   'previewList', 'previewBtn',
@@ -448,3 +448,4 @@ for (const c of checks) {
 }
 console.log(`\n${checks.length - failed}/${checks.length} 通过${up ? '' : '（服务未起来）'}`);
 process.exit(failed || !up ? 1 : 0);
+

@@ -90,6 +90,18 @@
       </div>
     </div>
 
+    <div id="photoPreview" class="photo-preview" hidden>
+      <div class="photo-preview-box">
+        <div class="section-title"><b>发送前预览</b><span class="muted">单张 · 可撤销</span></div>
+        <img id="photoPreviewImage" alt="待发送照片预览" />
+        <label class="field">caption（可留空）<textarea id="photoCaption" rows="2" maxlength="200" placeholder="给这张图配一句话…"></textarea></label>
+        <div class="control-actions">
+          <button id="photoPreviewCancel" class="ghost" type="button">取消</button>
+          <button id="photoPreviewSend" type="button">发送照片</button>
+        </div>
+      </div>
+    </div>
+
     <section id="contactsView" class="app-page contacts-page" hidden>
       <header class="page-title"><b>AI 联系人</b></header>
       <button id="contactAnam" class="conversation-card" type="button"><span class="avatar contact-avatar">✳</span><span class="conversation-copy"><b class="contact-name">Anam</b><small class="contact-signature">还没有签名</small></span><span class="row-btn-action">›</span></button>

@@ -2910,6 +2910,33 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { count: rows.length, bytes: rows.reduce((sum, row) => sum + (Number(row.bytes) || 0), 0) });
     }
 
+    const messageDeleteMatch = url.pathname.match(/^\/api\/messages\/([A-Za-z0-9_-]+)$/u);
+    if (messageDeleteMatch && req.method === 'DELETE') {
+      const id = messageDeleteMatch[1];
+      const index = messages.findIndex((message) => message.id === id && message.role === 'user' && message.type === 'image');
+      if (index < 0) return sendJson(res, 404, { error: 'image_message_not_found' });
+      const [removed] = messages.splice(index, 1);
+      const ref = String(removed.media?.ref || '');
+      const photoId = ref.startsWith('photo:') ? ref.slice(6) : '';
+      let photoRemoved = false;
+      if (photoId) {
+        const rows = readJsonl(PHOTO_LOG);
+        const updated = rows.map((row) => row.id === photoId ? { ...row, deleted: true, deletedAt: nowIso() } : row);
+        const tmp = `${PHOTO_LOG}.tmp`;
+        fs.writeFileSync(tmp, updated.map((row) => JSON.stringify(row)).join('\n') + (updated.length ? '\n' : ''), 'utf8');
+        fs.renameSync(tmp, PHOTO_LOG);
+        const record = rows.find((row) => row.id === photoId);
+        if (record?.file) {
+          try { fs.rmSync(path.join(PHOTO_DIR, path.basename(record.file)), { force: true }); photoRemoved = true; } catch { /* ignore */ }
+        }
+      }
+      const tmp = `${LOG}.tmp`;
+      fs.writeFileSync(tmp, messages.map((message) => JSON.stringify(message)).join('\n') + (messages.length ? '\n' : ''), 'utf8');
+      fs.renameSync(tmp, LOG);
+      publish('message-deleted', { id, photoRemoved });
+      return sendJson(res, 200, { ok: true, id, photoRemoved });
+    }
+
     const photoMatch = url.pathname.match(/^\/api\/photos\/([A-Za-z0-9_-]+)$/u);
     if (photoMatch && req.method === 'GET') {
       const records = readJsonl(PHOTO_LOG);
