@@ -1,4 +1,4 @@
-// 表情包库的纯函数：ID、魔数、尺寸、标签、目录选择、备份校验。
+﻿// 表情包库的纯函数：ID、魔数、尺寸、标签、目录选择、备份校验。
 // 不依赖 DOM / 网络；服务端、测试脚本共用。
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -7,7 +7,7 @@ import path from 'node:path';
 export const MEME_MAX_BYTES = 1.5 * 1024 * 1024;
 export const MEME_MAX_COUNT = 100;
 export const MEME_STATIC_EDGE = 768;
-export const MEME_CATALOG_MAX = 30;
+export const MEME_CATALOG_MAX = 50;
 export const MEME_LABEL_MAX = 20;
 export const MEME_TAGS_MAX = 2;
 export const MEME_TAG_MAX = 10;
@@ -73,6 +73,10 @@ export function memeSoftFrequencyBlock(enabled) {
     '没有合适表情时不要为凑比例勉强发送。',
     '用户明确要求时不受软频率参考约束。',
     '不要向用户解释频率判断。',
+    '【输出示例，只学形式，不要照抄】',
+    '纯文字：先接住对方的话，正常回答，不附加表情。',
+    '文字+表情：回答后，在 <anam-meta> 里加 {"meme":"目录里的具体id"}；正文不要写表情 id 或分类。',
+    '只发表情：正文可以很短，仍用 <anam-meta> 的 meme 字段发送；不要编造 id，没合适的就不发。',
   ].join('\n');
 }
 
@@ -279,3 +283,4 @@ export function verifyMemeBackup(dir) {
   const unresolvedRefs = [...referenced].filter((id) => !ids.has(id));
   return { ok: missing.length === 0 && hashMismatch.length === 0 && unresolvedRefs.length === 0, records: records.length, missing, hashMismatch, unresolvedRefs };
 }
+

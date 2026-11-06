@@ -1,4 +1,4 @@
-// V2 Phase 1 表情包库回归：上传校验、尺寸/判重、审核、目录计数、取图、删除引用、备份恢复。
+﻿// V2 Phase 1 表情包库回归：上传校验、尺寸/判重、审核、目录计数、取图、删除引用、备份恢复。
 // 用法：node app/tools/meme-test.mjs
 import fs from 'node:fs';
 import os from 'node:os';
@@ -129,10 +129,10 @@ for (const [index, meme] of candidates.entries()) {
   });
 }
 const afterReview = await (await fetch(`${BASE}/api/memes`)).json();
-check('目录满员为 30', afterReview.counts.catalog === 30, JSON.stringify(afterReview.counts));
-check('等待数为合格减 30', afterReview.counts.waiting === 1, JSON.stringify(afterReview.counts));
+check('目录上限 50 下全部合格项入目录', afterReview.counts.catalog === 31, JSON.stringify(afterReview.counts));
+check('目录未超 50 时等待数为 0', afterReview.counts.waiting === 0, JSON.stringify(afterReview.counts));
 const selected = selectCatalog(afterReview.memes).selected;
-check('目录顺序稳定（置顶优先）', selected[0]?.pinned === true && selected.length === 30);
+check('目录顺序稳定（置顶优先）', selected[0]?.pinned === true && selected.length === 31);
 
 const file = await fetch(`${BASE}/api/memes/${firstId}/file`);
 check('取图 MIME/缓存/安全头', file.status === 200 && file.headers.get('content-type') === 'image/png'
@@ -232,3 +232,4 @@ for (const c of checks) {
 }
 console.log(`\n${checks.length - failed}/${checks.length} 通过`);
 process.exit(failed ? 1 : 0);
+

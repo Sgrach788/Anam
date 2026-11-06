@@ -1186,5 +1186,28 @@
 - 真实测试：`{"ok":true,"sent":1,"results":[{"status":201}],...}`。
 - SW：`companion-v44-2026-11-06-p1`。
 - `push-api` 7/7（新增 keyMatch）。
+## v45：Phase 2b 起步 + 表情优化 — 2026-11-06
+
+### 已完成
+
+- 手动发表情：输入栏 ☺ 打开表情库；存在即可发，不看 AI reviewed/enabled；`POST /api/stickers/send`，用户 sticker 消息，SSE message，历史正确渲染。
+- 照片基础：输入栏 ▧；客户端 canvas JPEG 长边 2048；`POST /api/photos` 校验 PNG/JPEG/WebP 魔数/尺寸/大小，`app/data/photos/` + `photos.jsonl`；`image` 消息、`photo:` 引用、手动 caption；`GET /api/photos/:id` 鉴权读取；照片进备份；终端数据页显示张数/MB；L1 `[图片：caption]`/`[图片]`。
+- 表情教学示例：soft 开启时加入纯文字/文字+表情/只发表情三种范式；门控不变。
+- 目录上限 30→50；UI 计数同步。
+- 版本 0.2.45 / SW v45 / schema 1。
+
+### 未完成 / 已知缺口
+
+- AI 自动 caption 未做；当前 caption 由用户输入。
+- 发送前预览/撤销、列表缩略图、首字“正在看图”等待、发送令牌去重、删消息删文件、终端 caption 编辑未做。
+- 6 张新表情未导入：候选源均超 1.5MB 或配额不足；当前仍 44 张。
+- 手动表情/照片不触发 AI 回复。
+- 19 条注意未逐条全部实现。
+
+### 测试
+
+- meme-strategy 19/19；meme-test 31/31；meme-chat 20/20；dom-smoke 66/66；status 12/12；push-api 7/7；weather 7/7。
+- 照片接口隔离测试：上传 201、读取 200、统计 1 张/68 B。
+- 手动表情真实 UI：选择器 44 项，发送后历史出现 1 条用户 sticker。
 
 

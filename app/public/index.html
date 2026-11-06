@@ -75,10 +75,20 @@
       <button id="jumpBottom" class="jump-bottom" type="button" aria-label="回到最新消息" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 9 7 7 7-7"/></svg></button>
 
     <form id="composer">
+      <button id="stickerBtn" class="composer-tool" type="button" aria-label="发表情">☺</button>
+      <button id="photoBtn" class="composer-tool" type="button" aria-label="发照片">▧</button>
+      <input id="photoFile" type="file" accept="image/jpeg,image/png,image/webp" hidden />
       <textarea id="input" rows="1" placeholder="说点什么…" autocomplete="off" enterkeyhint="send"></textarea>
       <button id="send" type="submit" aria-label="发送">↑</button>
       </form>
     </section>
+
+    <div id="stickerPicker" class="sticker-picker" hidden>
+      <div class="sticker-picker-box">
+        <div class="section-title"><b>选一张表情</b><button id="stickerPickerClose" class="ghost compact" type="button">关闭</button></div>
+        <div id="stickerPickerGrid" class="sticker-picker-grid"></div>
+      </div>
+    </div>
 
     <section id="contactsView" class="app-page contacts-page" hidden>
       <header class="page-title"><b>AI 联系人</b></header>

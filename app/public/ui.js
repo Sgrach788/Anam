@@ -9,6 +9,12 @@ const list = document.getElementById('list');
 const loadOlder = document.getElementById('loadOlder');
 const jumpBottom = document.getElementById('jumpBottom');
 const tabChatBadge = document.getElementById('tabChatBadge');
+const stickerBtn = document.getElementById('stickerBtn');
+const photoBtn = document.getElementById('photoBtn');
+const photoFile = document.getElementById('photoFile');
+const stickerPicker = document.getElementById('stickerPicker');
+const stickerPickerGrid = document.getElementById('stickerPickerGrid');
+const stickerPickerClose = document.getElementById('stickerPickerClose');
 const appEl = document.getElementById('app');
 const input = document.getElementById('input');
 const sendBtn = document.getElementById('send');
@@ -500,8 +506,156 @@ function stickerBox(message) {
 
 function addMessageBubble(message) {
   if (message?.type === 'sticker') return addStickerBubble(message);
+  if (message?.type === 'image') return addImageBubble(message);
   return addBubble(message?.role, message?.text, message?.id, message?.at);
 }
+
+function addImageBubble(message) {
+  if (message.id && rendered.has(message.id)) return rendered.get(message.id);
+  const at = message.at || new Date().toISOString();
+  maybeSeparator(at);
+  const node = el('div', `msg image ${message.role === 'user' ? 'me' : 'ai'}`);
+  const ref = String(message.media?.ref || '');
+  const photoId = ref.startsWith('photo:') ? ref.slice(6) : '';
+  const image = el('img', 'message-photo');
+  image.alt = String(message.caption || message.media?.alt || '图片');
+  const caption = el('div', 'message-photo-caption', String(message.caption || ''));
+  node.appendChild(image);
+  if (message.caption) node.appendChild(caption);
+  if (message.id) {
+    node.dataset.id = message.id;
+    rendered.set(message.id, node);
+  }
+  list.appendChild(node);
+  if (photoId) {
+    void apiFetch(`/api/photos/${encodeURIComponent(photoId)}`).then(async (response) => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      image.src = URL.createObjectURL(blob);
+    }).catch(() => {
+      image.remove();
+      node.appendChild(el('div', 'side-msg', '图片读取失败'));
+    });
+  }
+  updateInboxPreview(message.caption || '[图片]', at);
+  scheduleScroll(message.role === 'user');
+  return node;
+}
+
+async function openStickerPicker() {
+  if (!memeList.length) await loadMemes({ render: false });
+  stickerPickerGrid.textContent = '';
+  if (!memeList.length) {
+    toast('表情库还是空的');
+    return;
+  }
+  for (const meme of memeList) {
+    const item = el('button', 'sticker-picker-item');
+    item.type = 'button';
+    const image = el('img');
+    image.alt = meme.label || '表情';
+    image.loading = 'lazy';
+    const label = el('small', '', meme.label || '未命名');
+    item.appendChild(image);
+    item.appendChild(label);
+    item.addEventListener('click', () => { void sendManualSticker(meme); });
+    stickerPickerGrid.appendChild(item);
+    void getMemePreviewUrl(meme).then((url) => { image.src = url; }).catch(() => {});
+  }
+  stickerPicker.hidden = false;
+}
+
+async function sendManualSticker(meme) {
+  stickerPicker.hidden = true;
+  try {
+    const response = await apiFetch('/api/stickers/send', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: meme.id }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    addMessageBubble(data.message);
+    rememberMessage(data.message);
+    writeMessageCache();
+    scheduleScroll(true);
+  } catch (err) {
+    toast(`发送表情失败：${err.message}`);
+  }
+}
+
+stickerBtn.addEventListener('click', () => { void openStickerPicker(); });
+stickerPickerClose.addEventListener('click', () => { stickerPicker.hidden = true; });
+stickerPicker.addEventListener('click', (event) => {
+  if (event.target === stickerPicker) stickerPicker.hidden = true;
+});
+
+photoBtn.addEventListener('click', () => photoFile.click());
+
+async function photoToDataUrl(file) {
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => null);
+  let width;
+  let height;
+  let source;
+  if (bitmap) {
+    width = bitmap.width;
+    height = bitmap.height;
+    source = bitmap;
+  } else {
+    const url = URL.createObjectURL(file);
+    try {
+      const image = new Image();
+      image.src = url;
+      await image.decode();
+      width = image.naturalWidth;
+      height = image.naturalHeight;
+      source = image;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+  const scale = Math.min(1, 2048 / Math.max(width, height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  canvas.getContext('2d').drawImage(source, 0, 0, canvas.width, canvas.height);
+  if (bitmap?.close) bitmap.close();
+  return canvas.toDataURL('image/jpeg', 0.88);
+}
+
+photoFile.addEventListener('change', async () => {
+  const file = photoFile.files?.[0];
+  photoFile.value = '';
+  if (!file) return;
+  if (!/^image\/(jpeg|png|webp)$/u.test(file.type)) {
+    toast('只支持 JPG / PNG / WebP；HEIC 请先转成 JPG');
+    return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    toast('图片太大，请先压缩到 8MB 以内');
+    return;
+  }
+  try {
+    const dataUrl = await photoToDataUrl(file);
+    const caption = input.value.trim();
+    const response = await apiFetch('/api/photos', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ dataUrl, caption }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    addMessageBubble(data.message);
+    rememberMessage(data.message);
+    writeMessageCache();
+    input.value = '';
+    resizeInput();
+    scheduleScroll(true);
+    toast(caption ? '图片和文字已发送' : '图片已发送');
+  } catch (err) {
+    toast(`发图失败：${err.message}`);
+  }
+});
 
 function addStickerBubble(message) {
   if (message.id && rendered.has(message.id)) return rendered.get(message.id);
@@ -763,7 +917,7 @@ function renderAll(messages, { preserveScroll = false } = {}) {
   }
   const sorted = [...messages].sort((a, b) => (a.seq || 0) - (b.seq || 0));
   const latest = sorted.at(-1);
-  if (latest) updateInboxPreview(latest.type === 'sticker' ? stickerText(latest) : latest.text, latest.at);
+  if (latest) updateInboxPreview(latest.type === 'sticker' ? stickerText(latest) : latest.type === 'image' ? (latest.caption || '[图片]') : latest.text, latest.at);
   else updateInboxPreview('还没有消息');
   for (const m of sorted) addMessageBubble(m);
 
@@ -1130,6 +1284,13 @@ async function loadWeatherStatus() {
   }
 }
 
+async function loadPhotoStats() {
+  try {
+    const response = await apiFetch('/api/photos/stats');
+    if (response.ok) photoStats = await response.json();
+  } catch { /* 保持 0 */ }
+}
+
 async function loadReplySpeedSetting() {
   try {
     const response = await apiFetch('/api/settings');
@@ -1258,7 +1419,7 @@ function renderTerminalDirectory() {
   const health = lastHealth;
   const status = lastStatus;
   rowMemes.textContent = lastMemeCounts
-    ? `${lastMemeCounts.total} 张 · 目录 ${lastMemeCounts.catalog}/30${lastMemeCounts.pending ? ` · 待审 ${lastMemeCounts.pending}` : ''}`
+    ? `${lastMemeCounts.total} 张 · 目录 ${lastMemeCounts.catalog}/50${lastMemeCounts.pending ? ` · 待审 ${lastMemeCounts.pending}` : ''}`
     : '读取中…';
   rowMemory.textContent = health ? `${Number(health.memoryFacts) || 0} 条事实 · ${Number(health.memorySummaries) || 0} 摘要` : '读取中…';
   rowBackup.textContent = health?.backup
@@ -1279,19 +1440,22 @@ function simpleRows(container, rows) {
   }
 }
 
+let photoStats = { count: 0, bytes: 0 };
+
 function renderTerminalPages() {
   const health = lastHealth;
   const status = lastStatus;
   simpleRows(backupInfo, [
     ['最近备份', health?.backup ? (health.backup === todayLabel() ? `今天 · ${health.backup}` : health.backup) : '尚未备份'],
     ['保留策略', '最近 7 天'],
-    ['备份范围', '聊天、记忆、表情与配置（不含密钥）'],
+    ['备份范围', '聊天、记忆、表情、照片与配置（不含密钥）'],
   ]);
   simpleRows(dataInfo, [
     ['聊天消息', `${Number(health?.messages) || 0} 条`],
     ['长期记忆', `${Number(health?.memoryFacts) || 0} 条事实 · ${Number(health?.memorySummaries) || 0} 条摘要`],
     ['本机缓存', (() => { try { const raw = localStorage.getItem(MSG_CACHE_KEY); return raw ? `${JSON.parse(raw).messages?.length || 0} 条消息` : '无'; } catch { return '无'; } })()],
     ['数据目录', 'app/data（仅电脑端）'],
+    ['照片', `${photoStats.count} 张 · ${(photoStats.bytes / 1024 / 1024).toFixed(1)} MB`],
   ]);
   simpleRows(advancedInfo, [
     ['产品版本', status?.productVersion || '—'],
@@ -1308,6 +1472,7 @@ async function loadTerminalModule(module) {
     await loadStatus();
     await loadPushStatus();
   } else if (module === 'data') {
+    await loadPhotoStats();
     renderTerminalPages();
     await loadWeatherStatus();
   } else renderTerminalPages();
@@ -1884,7 +2049,7 @@ summaryBack.addEventListener('click', closeSummaryPanel);
 // ---------- 表情包库（V2 Phase 1） ----------
 function updateMemeSummary(counts, enabled) {
   if (counts) {
-    memeCounts.textContent = `全库 ${counts.total}/100 · 合格 ${counts.qualified} · 目录 ${counts.catalog}/30 · 等待 ${counts.waiting}`;
+    memeCounts.textContent = `全库 ${counts.total}/100 · 合格 ${counts.qualified} · 目录 ${counts.catalog}/50 · 等待 ${counts.waiting}`;
     memeEntryCounts.textContent = `共 ${counts.total} 张 · 已启用 ${counts.enabled} 张${counts.pending ? ` · 待审核 ${counts.pending}` : ''}`;
     lastMemeCounts = counts;
     renderTerminalDirectory();
@@ -2882,4 +3047,5 @@ window.addEventListener('unhandledrejection', (e) => {
 
 // 有口令就带着它问；没有的话 boot() 会收到 401 并弹口令框
 boot();
+
 

@@ -1,4 +1,4 @@
-﻿import http from 'node:http';
+import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -37,6 +37,8 @@ const MEME_DIR = path.join(DATA, 'memes');
 const MEME_PREVIEW_DIR = path.join(MEME_DIR, 'previews');
 const WEATHER_CACHE_FILE = path.join(DATA, 'weather.json');
 const PUSH_LOG = path.join(DATA, 'push-subscriptions.jsonl');
+const PHOTO_DIR = path.join(DATA, 'photos');
+const PHOTO_LOG = path.join(DATA, 'photos.jsonl');
 const MEME_PREVIEW_MAX_BYTES = 300 * 1024;
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -121,6 +123,11 @@ function normalize(stored) {
   };
   // sticker 的展示文本由 media.alt 派生，不落冗余 text 字段。
   if (type !== 'sticker') msg.text = stored.text;
+  if (type === 'image') {
+    if (typeof stored.caption === 'string') msg.caption = stored.caption;
+    if (stored.captionBy === 'user' || stored.captionBy === 'ai') msg.captionBy = stored.captionBy;
+    if (typeof stored.captionAt === 'string') msg.captionAt = stored.captionAt;
+  }
   // 回复与用户消息的关联必须保留，否则重启后幂等回放会失效
   if (typeof stored.replyTo === 'string' && stored.replyTo) msg.replyTo = stored.replyTo;
   if (stored.mode === 'mock' || stored.mode === 'live') msg.mode = stored.mode;
@@ -224,6 +231,7 @@ function normalizeMemeRecord(raw) {
 function loadMemes() {
   fs.mkdirSync(MEME_DIR, { recursive: true });
   fs.mkdirSync(MEME_PREVIEW_DIR, { recursive: true });
+  fs.mkdirSync(PHOTO_DIR, { recursive: true });
   memes.length = 0;
   memesById.clear();
   corruptedMemes.clear();
@@ -809,6 +817,7 @@ async function indexMemoryVectors(records) {
 function messageText(message) {
   if (!message) return '';
   if (message.type === 'sticker') return `[表情] ${message.media?.alt || ''}`;
+  if (message.type === 'image') return message.caption ? `[图片：${message.caption}]` : '[图片]';
   return message.text || '';
 }
 
@@ -842,13 +851,19 @@ function ensureDailyBackup() {
   }
   try {
     fs.mkdirSync(dir, { recursive: true });
-    for (const name of ['messages.jsonl', 'usage.jsonl', 'facts.jsonl', 'summaries.jsonl', 'memory-overrides.jsonl', 'memory-vectors.jsonl', 'space.jsonl', 'emotion.jsonl', 'memes.jsonl']) {
+    for (const name of ['messages.jsonl', 'usage.jsonl', 'facts.jsonl', 'summaries.jsonl', 'memory-overrides.jsonl', 'memory-vectors.jsonl', 'space.jsonl', 'emotion.jsonl', 'memes.jsonl', 'photos.jsonl']) {
       const src = path.join(DATA, name);
       if (fs.existsSync(src)) fs.copyFileSync(src, path.join(dir, name));
     }
     const memeSource = path.join(DATA, 'memes');
     if (fs.existsSync(memeSource)) {
       fs.cpSync(memeSource, path.join(dir, 'memes'), {
+        recursive: true,
+        filter: (source) => !path.basename(source).startsWith('.tmp-'),
+      });
+    }
+    if (fs.existsSync(PHOTO_DIR)) {
+      fs.cpSync(PHOTO_DIR, path.join(dir, 'photos'), {
         recursive: true,
         filter: (source) => !path.basename(source).startsWith('.tmp-'),
       });
@@ -2152,6 +2167,23 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ---------- 表情包（V2 Phase 1：库 / 审核 / 取图；发送在 Phase 2） ----------
+    if (url.pathname === '/api/stickers/send' && req.method === 'POST') {
+      let payload = {};
+      try { payload = JSON.parse(await readBody(req) || '{}'); } catch { return sendJson(res, 400, { error: 'invalid_json' }); }
+      const id = String(payload.id || '').trim();
+      const meme = memesById.get(id);
+      if (!meme || corruptedMemes.has(id) || !isSafeMemeId(id)) return sendJson(res, 404, { error: 'meme_not_found' });
+      const message = append({
+        id: crypto.randomUUID(),
+        role: 'user',
+        type: 'sticker',
+        media: { ref: memeRef(id), w: Number(meme.w) || 0, h: Number(meme.h) || 0, alt: meme.label || '表情' },
+        at: nowIso(),
+      });
+      publish('message', message);
+      return sendJson(res, 201, { ok: true, message });
+    }
+
     if (url.pathname === '/api/memes' && req.method === 'GET') {
       const list = memes.map(memeView)
         .sort((a, b) => (Date.parse(b.created_at) - Date.parse(a.created_at)) || String(b.id).localeCompare(String(a.id)));
@@ -2824,6 +2856,60 @@ const server = http.createServer(async (req, res) => {
       const budget = budgetState();
       publish('budget', budget);
       return sendJson(res, 200, { ok: true, mode, budget });
+    }
+
+    if (url.pathname === '/api/photos' && req.method === 'POST') {
+      let payload = {};
+      try { payload = JSON.parse(await readBody(req) || '{}'); } catch { return sendJson(res, 400, { error: 'invalid_json' }); }
+      const match = /^data:([^;,]+)?;base64,([\s\S]+)$/u.exec(String(payload.dataUrl || ''));
+      if (!match) return sendJson(res, 400, { error: 'invalid_photo' });
+      let buffer;
+      try { buffer = Buffer.from(match[2], 'base64'); } catch { return sendJson(res, 400, { error: 'invalid_photo' }); }
+      if (!buffer.length || buffer.length > 8 * 1024 * 1024) return sendJson(res, 413, { error: 'photo_too_large' });
+      const mime = sniffMime(buffer);
+      if (!mime || !['image/png', 'image/jpeg', 'image/webp'].includes(mime)) return sendJson(res, 400, { error: 'unsupported_photo' });
+      const dims = imageDimensions(buffer, mime);
+      if (!dims) return sendJson(res, 400, { error: 'invalid_photo' });
+      const id = crypto.randomBytes(9).toString('base64url');
+      const ext = mime === 'image/png' ? 'png' : mime === 'image/jpeg' ? 'jpg' : 'webp';
+      const file = `${id}.${ext}`;
+      const target = path.join(PHOTO_DIR, file);
+      const tmp = path.join(PHOTO_DIR, `.tmp-${id}`);
+      fs.writeFileSync(tmp, buffer);
+      fs.renameSync(tmp, target);
+      const caption = String(payload.caption || '').trim().slice(0, 200);
+      const record = { v: 1, id, file, mime, w: dims.w, h: dims.h, bytes: buffer.length, hash: sha256(buffer), caption, captionBy: caption ? 'user' : '', captionAt: nowIso(), at: nowIso() };
+      appendJsonl(PHOTO_LOG, record);
+      const message = append({
+        id: crypto.randomUUID(),
+        role: 'user',
+        type: 'image',
+        text: caption,
+        caption,
+        captionBy: record.captionBy,
+        captionAt: record.captionAt,
+        media: { ref: `photo:${id}`, w: dims.w, h: dims.h, alt: caption || '图片' },
+        at: nowIso(),
+      });
+      publish('message', message);
+      return sendJson(res, 201, { ok: true, message, photo: { id, w: dims.w, h: dims.h, bytes: buffer.length, caption } });
+    }
+
+    if (url.pathname === '/api/photos/stats' && req.method === 'GET') {
+      const rows = readJsonl(PHOTO_LOG).filter((row) => !row.deleted);
+      return sendJson(res, 200, { count: rows.length, bytes: rows.reduce((sum, row) => sum + (Number(row.bytes) || 0), 0) });
+    }
+
+    const photoMatch = url.pathname.match(/^\/api\/photos\/([A-Za-z0-9_-]+)$/u);
+    if (photoMatch && req.method === 'GET') {
+      const records = readJsonl(PHOTO_LOG);
+      const record = records.find((row) => row.id === photoMatch[1] && !row.deleted);
+      if (!record) return sendJson(res, 404, { error: 'photo_not_found' });
+      const file = path.join(PHOTO_DIR, path.basename(record.file));
+      if (!fs.existsSync(file)) return sendJson(res, 404, { error: 'photo_missing' });
+      res.writeHead(200, { 'content-type': record.mime || 'application/octet-stream', 'cache-control': 'private, max-age=31536000, immutable' });
+      fs.createReadStream(file).pipe(res);
+      return;
     }
 
     if (url.pathname === '/api/chat' && req.method === 'POST') {

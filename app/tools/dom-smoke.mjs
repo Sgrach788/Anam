@@ -139,6 +139,7 @@ const ids = [
   'usageDay', 'usageSpend', 'usageTokens', 'usageCalls', 'usageLimit', 'usageBar', 'usageNote', 'usageBreakdown', 'statusVersionLine', 'statusUpdateHint', 'statusUpdateBtn', 'statusDetails',
   'terminalDirectory', 'apiSection', 'usageSection', 'balanceSection', 'statusSection', 'memorySection', 'backupSection', 'dataSection', 'advancedSection', 'futureSection',
   'pushState', 'pushHint', 'pushToggle', 'pushTest', 'pushGenerate', 'weatherCity', 'weatherState', 'weatherSave', 'weatherRefresh',
+  'stickerBtn', 'stickerPicker', 'stickerPickerGrid', 'stickerPickerClose', 'photoBtn', 'photoFile',
   'rowMemes', 'rowMemory', 'rowBackup', 'rowData', 'rowStatus', 'rowAdvanced', 'backupInfo', 'dataInfo', 'advancedInfo',
   'previewV1', 'previewV2', 'previewV3', 'previewV4',
   'previewList', 'previewBtn',

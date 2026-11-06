@@ -34,6 +34,7 @@ check('软提示包含用户明确要求例外', soft.includes('用户明确要�
 check('软提示不向用户解释', soft.includes('不要向用户解释频率判断'));
 check('软提示包含补发条款', soft.includes('近期连续几条回复都没有配图'));
 check('软提示包含情绪触发条款', soft.includes('遇到玩笑、鼓励、庆祝、共情或轻松接话'));
+check('软提示包含三种输出教学', soft.includes('纯文字：') && soft.includes('文字+表情：') && soft.includes('只发表情：'));
 check('软提示关闭为空', memeSoftFrequencyBlock(false) === '');
 check('目录开启软提示时注入', memePromptBlock([{ id: 'abc12345', label: '开心', tags: [] }], { softFrequency: true }).includes('用户明确要求时不受软频率参考约束'));
 
