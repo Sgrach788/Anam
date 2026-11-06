@@ -579,8 +579,35 @@ async function sendManualSticker(meme) {
     rememberMessage(data.message);
     writeMessageCache();
     scheduleScroll(true);
+    void requestManualReply(data.message.id);
   } catch (err) {
     toast(`发送表情失败：${err.message}`);
+  }
+}
+
+async function requestManualReply(id) {
+  if (!id || busy || awaitJob) return;
+  busy = true;
+  sendBtn.disabled = true;
+  awaitJob = id;
+  startTyping();
+  try {
+    const response = await apiFetch('/api/chat/respond', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    if (response.status === 409) return;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    await readSse(response, handleFrame);
+  } catch (err) {
+    if (!awaitJob) return;
+    toast(`她暂时没接上话：${err.message}`);
+  } finally {
+    busy = false;
+    sendBtn.disabled = false;
+    awaitJob = null;
+    stopTyping();
   }
 }
 
@@ -652,6 +679,7 @@ photoFile.addEventListener('change', async () => {
     resizeInput();
     scheduleScroll(true);
     toast(caption ? '图片和文字已发送' : '图片已发送');
+    void requestManualReply(data.message.id);
   } catch (err) {
     toast(`发图失败：${err.message}`);
   }

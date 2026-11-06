@@ -1179,7 +1179,8 @@ body.console-open #consolePanel .console-content { padding-bottom: calc(env(safe
 #pushHint, #weatherState { overflow-wrap: anywhere; }
 
 /* v45：手动表情选择 */
-.composer-tool { flex: 0 0 auto; width: 40px; min-height: 44px; border: 0; background: transparent; color: var(--dim); font-size: 24px; }
+.composer-tool { flex: 0 0 auto; width: 40px; min-height: 44px; border: 0; background: transparent; color: var(--dim); font-size: 0; display: grid; place-items: center; }
+.composer-icon { width: 22px; height: 22px; display: block; }
 .sticker-picker { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 18px; background: rgba(0,0,0,.72); }
 .sticker-picker[hidden] { display: none !important; }
 .sticker-picker-box { width: min(620px, 100%); max-height: 80vh; overflow: auto; padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--bg); }

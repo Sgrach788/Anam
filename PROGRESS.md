@@ -1209,5 +1209,23 @@
 - meme-strategy 19/19；meme-test 31/31；meme-chat 20/20；dom-smoke 66/66；status 12/12；push-api 7/7；weather 7/7。
 - 照片接口隔离测试：上传 201、读取 200、统计 1 张/68 B。
 - 手动表情真实 UI：选择器 44 项，发送后历史出现 1 条用户 sticker。
+## v46：推送标题 + 表情/照片触发回话 + 图标 — 2026-11-06
+
+- 推送标题：`notifyReply` 与 `/api/push/test` 均取 `loadProfile().name`，空回退 Anam；实测返回 `title:"Ds鱼🐟"`。
+- 表情/照片触发：新增 `POST /api/chat/respond`；只接受 user sticker/image；已有 assistant 回复返回 409，进行中返回 409；客户端发送后调用一次 `readSse`。
+- 表情上下文：手动 sticker 带 `media.tags`，L1 使用 `[表情] label（tags）`；照片用 caption。
+- 图标：`stickerBtn`/`photoBtn` 改内联 Lucide SVG（sticker/image），`stroke=currentColor`，尺寸 22px，按钮 40px 不变。
+- 版本 0.2.46 / SW v46 / schema 1。
+- 测试：status 12/12、dom 66/66、meme-strategy 19/19、meme-test 31/31、push-api 7/7、隔离 smoke 41/41。
+- 真实验证：测试推送 `sent=1,title=Ds鱼🐟`；表情发送后 AI 回复 3 个分段（一次生成），第二次 `/api/chat/respond` 返回 409。
+
+## 6 张扩库导入 — 2026-11-06
+
+- 备份：`backups/pre-neko-2026-11-06/`（89 文件）。
+- 主选 5 张成功：敲黑板、揉脸、娃娃机、自动画画、小猫懵逼。
+- 「花花」主选下载后未通过校验，按手册用备选「催眠2」；6 张均 `reviewed:false, enabled:false`。
+- 当前库 50 张；目录仍 44/50，等 Tian 在终端审核 6 张后进目录。
+- 未生成 6 张预览图；终端会回退原图。
+
 
 

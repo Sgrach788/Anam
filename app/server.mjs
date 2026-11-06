@@ -101,6 +101,7 @@ function normalizeMedia(value) {
     w: Number.isFinite(Number(value.w)) ? Number(value.w) : 0,
     h: Number.isFinite(Number(value.h)) ? Number(value.h) : 0,
     alt: typeof value.alt === 'string' ? value.alt : '',
+    tags: Array.isArray(value.tags) ? value.tags.filter((tag) => typeof tag === 'string').slice(0, 3) : [],
   };
 }
 
@@ -816,7 +817,10 @@ async function indexMemoryVectors(records) {
 // L1 工作记忆：最近 30 轮原文（第 6 步接真模型时直接用这段）。
 function messageText(message) {
   if (!message) return '';
-  if (message.type === 'sticker') return `[表情] ${message.media?.alt || ''}`;
+  if (message.type === 'sticker') {
+    const tags = Array.isArray(message.media?.tags) && message.media.tags.length ? `（${message.media.tags.join('、')}）` : '';
+    return `[表情] ${message.media?.alt || ''}${tags}`;
+  }
   if (message.type === 'image') return message.caption ? `[图片：${message.caption}]` : '[图片]';
   return message.text || '';
 }
@@ -1237,11 +1241,16 @@ async function sendPushToAll(payload) {
   return { sent, removed, results };
 }
 
+function profilePushTitle() {
+  const name = String(loadProfile().name || '').trim();
+  return name || 'Anam';
+}
+
 function notifyReply(replyText) {
   if (!pushEnabled() || !pushSubscriptions.length) return;
   const body = String(replyText || '').replace(/\s+/gu, ' ').trim().slice(0, 100);
   if (!body) return;
-  void sendPushToAll({ title: 'Anam', body, tag: 'anam-chat', url: '/' }).catch((err) => {
+  void sendPushToAll({ title: profilePushTitle(), body, tag: 'anam-chat', url: '/' }).catch((err) => {
     console.warn('[push] notify failed:', redactSecret(err.message));
   });
 }
@@ -1589,6 +1598,7 @@ setInterval(() => {
 // 每条用户消息由客户端生成 id，服务端拿这个 id 当主键：
 // 同一个 id 再来一次，只回放已有回复，绝不重复生成。
 const inflight = new Map(); // 客户端 id -> { promise }
+const manualReplyInflight = new Set(); // 表情/照片触发回复去重
 
 function sseStart(res) {
   res.writeHead(200, {
@@ -2177,7 +2187,7 @@ const server = http.createServer(async (req, res) => {
         id: crypto.randomUUID(),
         role: 'user',
         type: 'sticker',
-        media: { ref: memeRef(id), w: Number(meme.w) || 0, h: Number(meme.h) || 0, alt: meme.label || '表情' },
+        media: { ref: memeRef(id), w: Number(meme.w) || 0, h: Number(meme.h) || 0, alt: meme.label || '表情', tags: Array.isArray(meme.tags) ? meme.tags.slice(0, 3) : [] },
         at: nowIso(),
       });
       publish('message', message);
@@ -2632,8 +2642,8 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/push/test' && req.method === 'POST') {
       if (!pushConfigured()) return sendJson(res, 409, { error: 'push_not_configured' });
       if (pushKeyMatch() === false) return sendJson(res, 409, { error: 'vapid_key_mismatch', message: 'VAPID 公钥与私钥不匹配，请重新生成并重新订阅。' });
-      const result = await sendPushToAll({ title: 'Anam', body: '推送测试：连接成功。', tag: 'anam-test', url: '/' });
-      return sendJson(res, 200, { ok: result.sent > 0, ...result, ...pushStatusPayload() });
+      const result = await sendPushToAll({ title: profilePushTitle(), body: '推送测试：连接成功。', tag: 'anam-test', url: '/' });
+      return sendJson(res, 200, { ok: result.sent > 0, title: profilePushTitle(), ...result, ...pushStatusPayload() });
     }
 
     if (url.pathname === '/api/settings' && req.method === 'GET') {
@@ -2909,6 +2919,25 @@ const server = http.createServer(async (req, res) => {
       if (!fs.existsSync(file)) return sendJson(res, 404, { error: 'photo_missing' });
       res.writeHead(200, { 'content-type': record.mime || 'application/octet-stream', 'cache-control': 'private, max-age=31536000, immutable' });
       fs.createReadStream(file).pipe(res);
+      return;
+    }
+
+    if (url.pathname === '/api/chat/respond' && req.method === 'POST') {
+      let payload = {};
+      try { payload = JSON.parse(await readBody(req) || '{}'); } catch { return sendJson(res, 400, { error: 'invalid_json' }); }
+      const id = String(payload.id || '').trim();
+      const userMsg = messages.find((message) => message.id === id && message.role === 'user');
+      if (!userMsg || !['sticker', 'image'].includes(userMsg.type)) return sendJson(res, 404, { error: 'trigger_not_found' });
+      if (messages.some((message) => message.role === 'assistant' && message.replyTo === id)) {
+        return sendJson(res, 409, { error: 'already_replied' });
+      }
+      if (manualReplyInflight.has(id)) return sendJson(res, 409, { error: 'reply_in_progress' });
+      manualReplyInflight.add(id);
+      try {
+        await streamReply(res, userMsg, Math.max(1, estimateInputTokens(messageText(userMsg))));
+      } finally {
+        manualReplyInflight.delete(id);
+      }
       return;
     }
 
