@@ -77,7 +77,7 @@ check('伪造格式被拒', bad.status === 400);
 const big = await upload(craftedPng(2000, 1000));
 check('静态图 >768 被拒', big.status === 400);
 const tooBig = await upload(craftedPng(1, 1, 2 * 1024 * 1024));
-check('>1.5MB 被拒', tooBig.status === 413, `status=${tooBig.status}`);
+check('>2MB 被拒', tooBig.status === 413, `status=${tooBig.status}`);
 const ok1x1 = await upload(PNG_1X1, 'image/png', '');
 check('合法 PNG 上传', ok1x1.status === 201, JSON.stringify(ok1x1.body).slice(0, 120));
 const duplicate = await upload(PNG_1X1, 'image/png');
@@ -232,4 +232,5 @@ for (const c of checks) {
 }
 console.log(`\n${checks.length - failed}/${checks.length} 通过`);
 process.exit(failed ? 1 : 0);
+
 

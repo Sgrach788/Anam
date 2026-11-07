@@ -1,4 +1,4 @@
-// 界面层：渲染、输入、断线续传、口令、手势。网络细节在 api.js。
+﻿// 界面层：渲染、输入、断线续传、口令、手势。网络细节在 api.js。
 import {
   setToken, checkPassword, getHealth, getMessages, postChat,
   openEvents, readSse, apiFetch,
@@ -2458,7 +2458,7 @@ memeFile.addEventListener('change', async (event) => {  const files = [...(event
   memeMsg.textContent = '正在上传…';
   for (const file of files) {
     try {
-      if (file.size > 1.5 * 1024 * 1024) throw new Error('超过 1.5MB');
+      if (file.size > 2 * 1024 * 1024) throw new Error('超过 2MB');
       const prepared = await prepareMemeImage(file);
       const response = await apiFetch('/api/memes', {
         method: 'POST',
@@ -3256,6 +3256,7 @@ window.addEventListener('unhandledrejection', (e) => {
 
 // 有口令就带着它问；没有的话 boot() 会收到 401 并弹口令框
 boot();
+
 
 
 

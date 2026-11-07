@@ -1,10 +1,10 @@
-// 表情包库的纯函数：ID、魔数、尺寸、标签、目录选择、备份校验。
+﻿// 表情包库的纯函数：ID、魔数、尺寸、标签、目录选择、备份校验。
 // 不依赖 DOM / 网络；服务端、测试脚本共用。
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const MEME_MAX_BYTES = 1.5 * 1024 * 1024;
+export const MEME_MAX_BYTES = 2 * 1024 * 1024;
 export const MEME_MAX_COUNT = 100;
 export const MEME_STATIC_EDGE = 768;
 export const MEME_CATALOG_MAX = 50;
@@ -283,4 +283,5 @@ export function verifyMemeBackup(dir) {
   const unresolvedRefs = [...referenced].filter((id) => !ids.has(id));
   return { ok: missing.length === 0 && hashMismatch.length === 0 && unresolvedRefs.length === 0, records: records.length, missing, hashMismatch, unresolvedRefs };
 }
+
 

@@ -1,4 +1,4 @@
-// 从 nekowhale 元数据导入「大肥鱼」单人包的首批清单。
+﻿// 从 nekowhale 元数据导入「大肥鱼」单人包的首批清单。
 // 只下载清单内条目；下载后校验 SHA-1 前缀，再走现有 /api/memes 上传流水线。
 // 用法：
 //   node app/tools/meme-import-nekowhale.mjs --download
@@ -23,7 +23,7 @@ const SOURCE_META = path.join(SOURCE_DIR, 'nekowhale-2026-10-23.json');
 const API = 'http://127.0.0.1:8787';
 const KIT_URL = 'https://kiriyuki.com/meme/kit/nekowhale.json';
 const PACK = '大肥鱼';
-const MAX_BYTES = 1.5 * 1024 * 1024;
+const MAX_BYTES = 2 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT = Number(process.env.MEME_DOWNLOAD_TIMEOUT_MS || 90000);
 const UA = 'Companion-local-importer/1.0 (personal, non-commercial)';
 
@@ -303,3 +303,4 @@ else if (args.has('--retry')) await retryDownloads();
 else if (args.has('--previews')) generatePreviews();
 else if (args.has('--upload')) await upload();
 else console.log('use --download, --previews, or --upload');
+

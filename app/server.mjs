@@ -1,4 +1,4 @@
-import http from 'node:http';
+﻿import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -2261,7 +2261,7 @@ const server = http.createServer(async (req, res) => {
         payload = JSON.parse(await readBody(req, 3 * 1024 * 1024) || '{}');
       } catch (err) {
         return err.code === 'BODY_TOO_LARGE'
-          ? sendJson(res, 413, { error: 'too_large', message: '图片超过 1.5MB。' })
+          ? sendJson(res, 413, { error: 'too_large', message: '图片超过 2MB。' })
           : sendJson(res, 400, { error: 'invalid_json', message: '上传数据不是合法 JSON。' });
       }
 
@@ -2271,7 +2271,7 @@ const server = http.createServer(async (req, res) => {
       let buffer;
       try { buffer = Buffer.from(match[3], 'base64'); } catch { return sendJson(res, 400, { error: 'invalid_data_url', message: '图片数据无法解码。' }); }
       if (!buffer.length) return sendJson(res, 400, { error: 'empty_image', message: '图片是空的。' });
-      if (buffer.length > MEME_MAX_BYTES) return sendJson(res, 413, { error: 'too_large', message: '图片超过 1.5MB。' });
+      if (buffer.length > MEME_MAX_BYTES) return sendJson(res, 413, { error: 'too_large', message: '图片超过 2MB。' });
       if (memes.length >= MEME_MAX_COUNT) return sendJson(res, 409, { error: 'meme_limit', message: '表情包已满 100 张。' });
 
       const mime = sniffMime(buffer);
@@ -3246,5 +3246,6 @@ setInterval(() => { void refreshWeather(); }, 60 * 60 * 1000).unref();
 server.listen(PORT, HOST, () => {
   console.log(`[companion] http://${HOST}:${PORT}  mode=${isMockMode() ? 'mock' : 'live'}  schema=v${SCHEMA}  history=${messages.length}  data=${DATA}  auth=${loadConfig().accessPassword ? 'on' : 'off'}`);
 });
+
 
 
