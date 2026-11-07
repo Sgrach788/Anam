@@ -739,7 +739,7 @@ photoPreviewSend.addEventListener('click', async () => {
     rememberMessage(data.message);
     writeMessageCache();
     input.value = '';
-    resizeInput();
+    input.style.height = 'auto';
     scheduleScroll(true);
     toast(caption ? '图片和文字已发送' : '图片已发送');
     void requestManualReply(data.message.id, '她正在看图…');

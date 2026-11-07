@@ -327,9 +327,9 @@
 
 ## 第四轮 E1 — 2026-10-31：Tailscale HTTPS
 
-- **装机**：电脑 `astaria` + 手机 `iphone182`，登录同一 Tailscale 账号，两端在线（<your-tailscale-ip> / 100.123.9.77）。
+- **装机**：电脑 `astaria` + 手机 `iphone182`，登录同一 Tailscale 账号，两端在线（100.94.203.71 / 100.123.9.77）。
 - **开通 Serve**：Tailscale 默认关闭 Serve，用户在 `login.tailscale.com/f/serve?node=...` 点启用后生效。
-- **配置**：`tailscale serve --bg 8787` → `https://<your-tailnet-host>` 代理到 `http://127.0.0.1:8787`，配置持久化。
+- **配置**：`tailscale serve --bg 8787` → `https://astaria.taila3bf96.ts.net` 代理到 `http://127.0.0.1:8787`，配置持久化。
 - **验证**（提权执行，因为沙箱访问不到 tailnet 和 Tailscale 命名管道）：
   - 页面 `200`，`ssl_verify=0`（证书链校验通过）；
   - 无口令 `/api/health` → `401`；带口令 → `200`（mode=live，messages=311）；
@@ -1265,5 +1265,11 @@
 - 照片上传 body limit 12MB，修复 1MB 图 400。
 - clientId 去重：同 token 第二次返回 200 duplicate，不重复落消息。
 - “她正在看图/看表情…”等待态；预览/取消、删图删文件已通。
+### v47 追加：三处修正
 
+- `resizeInput()` 未定义已移除，发图后改为 `input.style.height = 'auto'`；不再误报发图失败，`requestManualReply` 能继续执行。
+- `completeVisionCaption` 只用 `message.content`；content 为空返回空，不使用 `reasoning_content`。旧 reasoning 测试记录已删除。
+- 生成请求：`streamModel` 接收当前 user image，`buildContextMessages` 把当前图片 base64 以 `image_url` 放进 `messages`；实测她看到截图并回“哟 这不是我嘛 / 表情还挺全”。
+- 视觉 caption 实测：1x1 黑图 → “一张纯黑色的正方形图片”；截图 → “聊天应用表情选择界面展示多款蓝发女仆角色表情”。
+- 测试：reply 25/25、dom 66/66、meme-strategy 19/19、status 12/12、隔离 smoke 41/41。
 

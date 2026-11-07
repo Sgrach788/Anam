@@ -671,7 +671,7 @@ function buildPromptBundle(nowDate = new Date(), profile = loadProfile(), query 
     weatherText,
     dateText,
   });
-  const l1 = contextMessages.reduce((sum, message) => sum + estimateTokens(message.content), 0);
+  const l1 = contextMessages.reduce((sum, message) => sum + estimateTokens(contentTokenText(message.content)), 0);
   const breakdown = normalizeBreakdown({
     stable: estimateTokens(stablePrefix),
     memory: estimateTokens(memoryText),
@@ -825,14 +825,49 @@ function messageText(message) {
   return message.text || '';
 }
 
-function buildContextMessages(now = new Date()) {
-  return buildL1Context(messages, {
+function imageDataUrlFor(message) {
+  if (message?.type !== 'image') return '';
+  const ref = String(message.media?.ref || '');
+  if (!ref.startsWith('photo:')) return '';
+  const id = ref.slice(6);
+  const record = readJsonl(PHOTO_LOG).find((row) => row.id === id && !row.deleted);
+  if (!record?.file) return '';
+  try {
+    const buffer = fs.readFileSync(path.join(PHOTO_DIR, path.basename(record.file)));
+    return `data:${record.mime || 'image/jpeg'};base64,${buffer.toString('base64')}`;
+  } catch {
+    return '';
+  }
+}
+
+function contentTokenText(content) {
+  if (!Array.isArray(content)) return String(content || '');
+  return content.map((part) => part?.type === 'text' ? String(part.text || '') : '').join(' ');
+}
+
+function buildContextMessages(now = new Date(), imageMessage = null) {
+  const context = buildL1Context(messages, {
     maxMessages: L1_TURNS * 2,
     budget: L1_TOKEN_BUDGET,
     tokenize: estimateTokens,
     timeLabel: (at) => relativeTimeLabel(at, now),
     textOf: messageText,
   });
+  const imageUrl = imageMessage ? imageDataUrlFor(imageMessage) : '';
+  if (imageUrl) {
+    for (let i = context.length - 1; i >= 0; i--) {
+      if (context[i].role !== 'user') continue;
+      context[i] = {
+        role: 'user',
+        content: [
+          { type: 'text', text: context[i].content },
+          { type: 'image_url', image_url: { url: imageUrl } },
+        ],
+      };
+      break;
+    }
+  }
+  return context;
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -1414,7 +1449,7 @@ function checkAuth(req, res) {
 
 // 流式调用（OpenAI 兼容），返回 { text, usage }。
 // usage 来自最后一帧的 usage 字段（stream_options.include_usage），记账以它为准。
-async function streamModel(onDelta, maxTokens, memeSnapshot = null) {
+async function streamModel(onDelta, maxTokens, memeSnapshot = null, imageMessage = null) {
   const cfg = loadConfig();
   if (!cfg.apiKey) {
     const e = new Error('还没配置 API key');
@@ -1426,7 +1461,7 @@ async function streamModel(onDelta, maxTokens, memeSnapshot = null) {
   const nowDate = new Date();
   const query = messages.at(-1)?.role === 'user' ? messages.at(-1).text : '';
   const queryVector = shouldEmbedQuery(query) ? await embedQuery(query, estimateInputTokens(query)) : null;
-  const contextMessages = buildContextMessages(nowDate);
+  const contextMessages = buildContextMessages(nowDate, imageMessage);
   const promptBundle = buildPromptBundle(nowDate, loadProfile(), query, queryVector, memeSnapshot, contextMessages);
   const messagesOut = [
     { role: 'system', content: promptBundle.prompt },
@@ -1736,7 +1771,7 @@ async function streamReply(res, userMsg, tokensIn) {
       const out = await streamModel((piece) => {
         reply += piece;
         queue.push(piece);
-      }, maxTokens, memeSnapshot);
+      }, maxTokens, memeSnapshot, userMsg);
       usage = out.usage || null;
       breakdown = out.breakdown || null;
     } catch (err) {
@@ -1858,7 +1893,7 @@ async function completeOnce(systemContent, userContent, maxTokens = 300, tempera
 // 输入 token：人设 + L1 最近 30 轮 + 这一句（mock 阶段按字数估算）
 function estimateInputTokens(text) {
   let n = estimateTokens(PERSONA) + estimateTokens(profileBlock()) + estimateTokens(signatureBlock()) + estimateTokens(memoryBlock(text)) + 12;
-  for (const m of buildContextMessages()) n += estimateTokens(m.content) + 4;
+  for (const m of buildContextMessages()) n += estimateTokens(contentTokenText(m.content)) + 4;
   return n + estimateTokens(text) + 4;
 }
 
@@ -2903,9 +2938,8 @@ async function completeVisionCaption(dataUrl, note = '') {
     const j = await r.json();
     const message = j.choices?.[0]?.message || {};
     const content = String(message.content || '').trim();
-    const reasoning = String(message.reasoning_content || '').trim();
-    const out = content || reasoning;
-    return out
+    if (!content) return '';
+    return content
       .replace(/^["'“”「」\s]+|["'“”「」\s]+$/gu, '')
       .replace(/[。.!！?？]+$/u, '')
       .slice(0, 60)
