@@ -2868,9 +2868,61 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, mode, budget });
     }
 
+async function completeVisionCaption(dataUrl, note = '') {
+  const cfg = loadConfig();
+  if (!cfg.apiKey) return '';
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 25000);
+  try {
+    const r = await fetch(`${cfg.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${cfg.apiKey}` },
+      body: JSON.stringify({
+        model: cfg.model,
+        messages: [
+          { role: 'system', content: '你是聊天配图助手。只输出一句中文 caption，客观描述图片内容，最多 28 个字，不加引号、不加句号、不解释。' },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: note ? `用户可能想配的文字：${note}\n请为这张图写一句聊天 caption。` : '请为这张图写一句聊天 caption。' },
+              { type: 'image_url', image_url: { url: dataUrl } },
+            ],
+          },
+        ],
+        max_tokens: 300,
+        temperature: 0.2,
+        stream: false,
+      }),
+      signal: ac.signal,
+    });
+    if (!r.ok) {
+      const detail = await r.text().catch(() => '');
+      console.warn('[caption] vision HTTP', r.status, redactSecret(detail, cfg.apiKey).slice(0, 200));
+      return '';
+    }
+    const j = await r.json();
+    const message = j.choices?.[0]?.message || {};
+    const content = String(message.content || '').trim();
+    const reasoning = String(message.reasoning_content || '').trim();
+    const out = content || reasoning;
+    return out
+      .replace(/^["'“”「」\s]+|["'“”「」\s]+$/gu, '')
+      .replace(/[。.!！?？]+$/u, '')
+      .slice(0, 60)
+      .trim();
+  } catch (err) {
+    console.warn('[caption] vision failed:', redactSecret(err.message));
+    return '';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
     if (url.pathname === '/api/photos' && req.method === 'POST') {
       let payload = {};
-      try { payload = JSON.parse(await readBody(req) || '{}'); } catch { return sendJson(res, 400, { error: 'invalid_json' }); }
+      try { payload = JSON.parse(await readBody(req, 12 * 1024 * 1024) || '{}'); } catch (err) {
+        return sendJson(res, err.code === 'BODY_TOO_LARGE' ? 413 : 400, { error: err.code === 'BODY_TOO_LARGE' ? 'photo_too_large' : 'invalid_json' });
+      }
       const match = /^data:([^;,]+)?;base64,([\s\S]+)$/u.exec(String(payload.dataUrl || ''));
       if (!match) return sendJson(res, 400, { error: 'invalid_photo' });
       let buffer;
@@ -2880,6 +2932,14 @@ const server = http.createServer(async (req, res) => {
       if (!mime || !['image/png', 'image/jpeg', 'image/webp'].includes(mime)) return sendJson(res, 400, { error: 'unsupported_photo' });
       const dims = imageDimensions(buffer, mime);
       if (!dims) return sendJson(res, 400, { error: 'invalid_photo' });
+      const clientId = String(payload.clientId || '').trim().slice(0, 80);
+      if (clientId) {
+        const existing = readJsonl(PHOTO_LOG).find((row) => !row.deleted && row.clientId === clientId);
+        if (existing) {
+          const existingMessage = messages.find((message) => message.type === 'image' && message.media?.ref === `photo:${existing.id}`);
+          if (existingMessage) return sendJson(res, 200, { ok: true, duplicate: true, message: existingMessage, photo: { id: existing.id, w: existing.w, h: existing.h, bytes: existing.bytes, caption: existing.caption || '' } });
+        }
+      }
       const id = crypto.randomBytes(9).toString('base64url');
       const ext = mime === 'image/png' ? 'png' : mime === 'image/jpeg' ? 'jpg' : 'webp';
       const file = `${id}.${ext}`;
@@ -2887,8 +2947,11 @@ const server = http.createServer(async (req, res) => {
       const tmp = path.join(PHOTO_DIR, `.tmp-${id}`);
       fs.writeFileSync(tmp, buffer);
       fs.renameSync(tmp, target);
-      const caption = String(payload.caption || '').trim().slice(0, 200);
-      const record = { v: 1, id, file, mime, w: dims.w, h: dims.h, bytes: buffer.length, hash: sha256(buffer), caption, captionBy: caption ? 'user' : '', captionAt: nowIso(), at: nowIso() };
+      const userCaption = String(payload.caption || '').trim().slice(0, 200);
+      const aiCaption = await completeVisionCaption(payload.dataUrl, userCaption);
+      const caption = (aiCaption || userCaption).slice(0, 200);
+      const captionBy = aiCaption ? 'ai' : (userCaption ? 'user' : '');
+      const record = { v: 1, id, file, mime, w: dims.w, h: dims.h, bytes: buffer.length, hash: sha256(buffer), caption, captionBy, captionAt: nowIso(), clientId, at: nowIso() };
       appendJsonl(PHOTO_LOG, record);
       const message = append({
         id: crypto.randomUUID(),
@@ -2903,6 +2966,11 @@ const server = http.createServer(async (req, res) => {
       });
       publish('message', message);
       return sendJson(res, 201, { ok: true, message, photo: { id, w: dims.w, h: dims.h, bytes: buffer.length, caption } });
+    }
+
+    if (url.pathname === '/api/photos' && req.method === 'GET') {
+      const rows = readJsonl(PHOTO_LOG).filter((row) => !row.deleted).slice(-50).reverse();
+      return sendJson(res, 200, { photos: rows.map((row) => ({ id: row.id, w: row.w, h: row.h, bytes: row.bytes, caption: row.caption || '', captionBy: row.captionBy || '', captionAt: row.captionAt || '', at: row.at || '' })) });
     }
 
     if (url.pathname === '/api/photos/stats' && req.method === 'GET') {
@@ -2938,6 +3006,33 @@ const server = http.createServer(async (req, res) => {
     }
 
     const photoMatch = url.pathname.match(/^\/api\/photos\/([A-Za-z0-9_-]+)$/u);
+    if (photoMatch && req.method === 'PATCH') {
+      let payload = {};
+      try { payload = JSON.parse(await readBody(req) || '{}'); } catch { return sendJson(res, 400, { error: 'invalid_json' }); }
+      const caption = String(payload.caption || '').trim().slice(0, 200);
+      const rows = readJsonl(PHOTO_LOG);
+      const index = rows.findIndex((row) => row.id === photoMatch[1] && !row.deleted);
+      if (index < 0) return sendJson(res, 404, { error: 'photo_not_found' });
+      rows[index] = { ...rows[index], caption, captionBy: 'user', captionAt: nowIso() };
+      const tmp = `${PHOTO_LOG}.tmp`;
+      fs.writeFileSync(tmp, rows.map((row) => JSON.stringify(row)).join('\n') + (rows.length ? '\n' : ''), 'utf8');
+      fs.renameSync(tmp, PHOTO_LOG);
+      const ref = `photo:${photoMatch[1]}`;
+      const message = messages.find((item) => item.type === 'image' && item.media?.ref === ref);
+      if (message) {
+        message.caption = caption;
+        message.text = caption;
+        message.captionBy = 'user';
+        message.captionAt = nowIso();
+        if (message.media) message.media.alt = caption || '图片';
+        const msgTmp = `${LOG}.tmp`;
+        fs.writeFileSync(msgTmp, messages.map((item) => JSON.stringify(item)).join('\n') + (messages.length ? '\n' : ''), 'utf8');
+        fs.renameSync(msgTmp, LOG);
+        publish('message-updated', { ...message });
+      }
+      return sendJson(res, 200, { ok: true, photo: { id: rows[index].id, caption } });
+    }
+
     if (photoMatch && req.method === 'GET') {
       const records = readJsonl(PHOTO_LOG);
       const record = records.find((row) => row.id === photoMatch[1] && !row.deleted);
@@ -3050,4 +3145,5 @@ setInterval(() => { void refreshWeather(); }, 60 * 60 * 1000).unref();
 server.listen(PORT, HOST, () => {
   console.log(`[companion] http://${HOST}:${PORT}  mode=${isMockMode() ? 'mock' : 'live'}  schema=v${SCHEMA}  history=${messages.length}  data=${DATA}  auth=${loadConfig().accessPassword ? 'on' : 'off'}`);
 });
+
 

@@ -139,7 +139,7 @@ const ids = [
   'usageDay', 'usageSpend', 'usageTokens', 'usageCalls', 'usageLimit', 'usageBar', 'usageNote', 'usageBreakdown', 'statusVersionLine', 'statusUpdateHint', 'statusUpdateBtn', 'statusDetails',
   'terminalDirectory', 'apiSection', 'usageSection', 'balanceSection', 'statusSection', 'memorySection', 'backupSection', 'dataSection', 'advancedSection', 'futureSection',
   'pushState', 'pushHint', 'pushToggle', 'pushTest', 'pushGenerate', 'weatherCity', 'weatherState', 'weatherSave', 'weatherRefresh',
-  'stickerBtn', 'stickerPicker', 'stickerPickerGrid', 'stickerPickerClose', 'photoBtn', 'photoFile', 'photoPreview', 'photoPreviewImage', 'photoCaption', 'photoPreviewCancel', 'photoPreviewSend',
+  'stickerBtn', 'stickerPicker', 'stickerPickerGrid', 'stickerPickerClose', 'photoBtn', 'photoFile', 'photoPreview', 'photoPreviewImage', 'photoCaption', 'photoPreviewCancel', 'photoPreviewSend', 'photoList',
   'rowMemes', 'rowMemory', 'rowBackup', 'rowData', 'rowStatus', 'rowAdvanced', 'backupInfo', 'dataInfo', 'advancedInfo',
   'previewV1', 'previewV2', 'previewV3', 'previewV4',
   'previewList', 'previewBtn',
@@ -448,4 +448,5 @@ for (const c of checks) {
 }
 console.log(`\n${checks.length - failed}/${checks.length} 通过${up ? '' : '（服务未起来）'}`);
 process.exit(failed || !up ? 1 : 0);
+
 

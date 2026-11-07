@@ -1205,3 +1205,9 @@ body.console-open #consolePanel .console-content { padding-bottom: calc(env(safe
 /* v47：图片消息删除（删消息即删文件） */
 .msg.image { position: relative; }
 .image-delete { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; border: 0; border-radius: 50%; background: rgba(0,0,0,.55); color: #fff; font-size: 18px; line-height: 1; display: grid; place-items: center; }
+
+/* v47：终端照片 caption 编辑 */
+.photo-list { display: flex; flex-direction: column; gap: 8px; }
+.photo-caption-row { display: grid; grid-template-columns: 1fr auto; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; }
+.photo-caption-meta { grid-column: 1 / -1; color: var(--dim); font-size: 11px; }
+.photo-caption-row input { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }

@@ -1257,6 +1257,13 @@
 - 照片选择后先本地预览，caption 可改，取消不写服务端；确认后才上传。
 - `DELETE /api/messages/:id`：删除 user image 消息、标记 `photos.jsonl` deleted、删除 `photos/` 文件，SSE `message-deleted` 移除气泡。
 - 隔离测试：删除 200、photos stats 归零、原图 404。
+### v47 追加：视觉 caption / 终端编辑 / 去重 / 等待态
 
+- deepseek-flash 视觉 caption：同一次 `/api/photos` 请求内生成，`captionBy=ai`；实测 1MB 截图得到“界面展示蓝发女仆角色的多种表情包选项”。
+- 视觉接口 `max_tokens=300`，兼容 reasoning_content；无视觉/失败回退用户 caption。
+- 终端照片列表 + caption 编辑（PATCH）。
+- 照片上传 body limit 12MB，修复 1MB 图 400。
+- clientId 去重：同 token 第二次返回 200 duplicate，不重复落消息。
+- “她正在看图/看表情…”等待态；预览/取消、删图删文件已通。
 
 

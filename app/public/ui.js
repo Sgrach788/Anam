@@ -20,6 +20,7 @@ const photoPreviewImage = document.getElementById('photoPreviewImage');
 const photoCaption = document.getElementById('photoCaption');
 const photoPreviewCancel = document.getElementById('photoPreviewCancel');
 const photoPreviewSend = document.getElementById('photoPreviewSend');
+const photoList = document.getElementById('photoList');
 const appEl = document.getElementById('app');
 const input = document.getElementById('input');
 const sendBtn = document.getElementById('send');
@@ -458,9 +459,9 @@ function setStatus(ok, text) {
 }
 
 // 500ms 后才显示"正在输入…"，避免一闪而过
-function startTyping() {
+function startTyping(label = '正在输入…') {
   clearTimeout(typingTimer);
-  typingTimer = setTimeout(() => { statusText.textContent = '正在输入…'; }, 500);
+  typingTimer = setTimeout(() => { statusText.textContent = label; }, 500);
 }
 
 function stopTyping() {
@@ -613,18 +614,18 @@ async function sendManualSticker(meme) {
     rememberMessage(data.message);
     writeMessageCache();
     scheduleScroll(true);
-    void requestManualReply(data.message.id);
+    void requestManualReply(data.message.id, '她正在看表情…');
   } catch (err) {
     toast(`发送表情失败：${err.message}`);
   }
 }
 
-async function requestManualReply(id) {
+async function requestManualReply(id, label = '正在输入…') {
   if (!id || busy || awaitJob) return;
   busy = true;
   sendBtn.disabled = true;
   awaitJob = id;
-  startTyping();
+  startTyping(label);
   try {
     const response = await apiFetch('/api/chat/respond', {
       method: 'POST',
@@ -685,6 +686,7 @@ async function photoToDataUrl(file) {
 }
 
 let pendingPhotoDataUrl = '';
+let pendingPhotoToken = '';
 
 photoFile.addEventListener('change', async () => {
   const file = photoFile.files?.[0];
@@ -700,6 +702,7 @@ photoFile.addEventListener('change', async () => {
   }
   try {
     pendingPhotoDataUrl = await photoToDataUrl(file);
+    pendingPhotoToken = crypto.randomUUID();
     photoPreviewImage.src = pendingPhotoDataUrl;
     photoCaption.value = input.value.trim();
     photoPreview.hidden = false;
@@ -712,19 +715,23 @@ photoFile.addEventListener('change', async () => {
 photoPreviewCancel.addEventListener('click', () => {
   photoPreview.hidden = true;
   pendingPhotoDataUrl = '';
+  pendingPhotoToken = '';
 });
 
 photoPreviewSend.addEventListener('click', async () => {
   if (!pendingPhotoDataUrl) return;
   const dataUrl = pendingPhotoDataUrl;
   const caption = photoCaption.value.trim();
+  const clientId = pendingPhotoToken;
   photoPreview.hidden = true;
   pendingPhotoDataUrl = '';
+  pendingPhotoToken = '';
+  photoPreviewSend.disabled = true;
   try {
     const response = await apiFetch('/api/photos', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ dataUrl, caption }),
+      body: JSON.stringify({ dataUrl, caption, clientId }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
@@ -735,9 +742,11 @@ photoPreviewSend.addEventListener('click', async () => {
     resizeInput();
     scheduleScroll(true);
     toast(caption ? '图片和文字已发送' : '图片已发送');
-    void requestManualReply(data.message.id);
+    void requestManualReply(data.message.id, '她正在看图…');
   } catch (err) {
     toast(`发图失败：${err.message}`);
+  } finally {
+    photoPreviewSend.disabled = false;
   }
 });
 
@@ -1375,6 +1384,55 @@ async function loadPhotoStats() {
   } catch { /* 保持 0 */ }
 }
 
+async function loadPhotoList() {
+  if (!photoList) return;
+  photoList.textContent = '读取中…';
+  try {
+    const response = await apiFetch('/api/photos');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    const rows = data.photos || [];
+    photoList.textContent = '';
+    if (!rows.length) {
+      photoList.appendChild(el('div', 'muted', '还没有照片。'));
+      return;
+    }
+    for (const photo of rows) {
+      const row = el('div', 'photo-caption-row');
+      const meta = el('div', 'photo-caption-meta', `${photo.w}×${photo.h} · ${(Number(photo.bytes) / 1024 / 1024).toFixed(2)} MB · ${photo.captionBy === 'ai' ? 'AI caption' : '手写 caption'}`);
+      const input = document.createElement('input');
+      input.value = photo.caption || '';
+      input.maxLength = 200;
+      input.placeholder = 'caption（可留空）';
+      const save = el('button', 'ghost compact', '保存');
+      save.type = 'button';
+      save.addEventListener('click', async () => {
+        save.disabled = true;
+        try {
+          const res = await apiFetch(`/api/photos/${encodeURIComponent(photo.id)}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ caption: input.value.trim() }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          toast('caption 已保存');
+          await loadPhotoList();
+        } catch (err) {
+          toast(`caption 保存失败：${err.message}`);
+        } finally {
+          save.disabled = false;
+        }
+      });
+      row.appendChild(meta);
+      row.appendChild(input);
+      row.appendChild(save);
+      photoList.appendChild(row);
+    }
+  } catch (err) {
+    photoList.textContent = `照片列表读取失败：${err.message}`;
+  }
+}
+
 async function loadReplySpeedSetting() {
   try {
     const response = await apiFetch('/api/settings');
@@ -1559,6 +1617,7 @@ async function loadTerminalModule(module) {
     await loadPhotoStats();
     renderTerminalPages();
     await loadWeatherStatus();
+    await loadPhotoList();
   } else renderTerminalPages();
 }
 
@@ -2811,6 +2870,16 @@ function handleFrame({ event, data, id }) {
     removeBubble(data.id);
     loadedMessages = loadedMessages.filter((item) => item.id !== data.id);
     writeMessageCache();
+  } else if (event === 'message-updated') {
+    const node = rendered.get(data.id);
+    if (node) {
+      let caption = node.querySelector('.message-photo-caption');
+      if (caption) caption.textContent = data.caption || '';
+      if (!caption && data.caption) {
+        caption = el('div', 'message-photo-caption', data.caption);
+        node.appendChild(caption);
+      }
+    }
   } else if (event === 'done') {
     if (data.jobId === awaitJob) { awaitJob = null; loadHeaderProfile(); }
   } else if (event === 'budget') {
@@ -3135,5 +3204,6 @@ window.addEventListener('unhandledrejection', (e) => {
 
 // 有口令就带着它问；没有的话 boot() 会收到 401 并弹口令框
 boot();
+
 
 
