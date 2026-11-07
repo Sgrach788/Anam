@@ -1272,4 +1272,13 @@
 - 生成请求：`streamModel` 接收当前 user image，`buildContextMessages` 把当前图片 base64 以 `image_url` 放进 `messages`；实测她看到截图并回“哟 这不是我嘛 / 表情还挺全”。
 - 视觉 caption 实测：1x1 黑图 → “一张纯黑色的正方形图片”；截图 → “聊天应用表情选择界面展示多款蓝发女仆角色表情”。
 - 测试：reply 25/25、dom 66/66、meme-strategy 19/19、status 12/12、隔离 smoke 41/41。
+### v47 追加：照片 caption 显示与附带消息分离
+
+- 照片气泡不再渲染 caption 行；旧照片同样不显示。
+- AI caption 仍在 `/api/photos` 生成，`captionBy=ai`，只存 `photos.jsonl`，用于 L1 占位和终端查看/编辑。
+- 弹框字段改为“附带消息”；发送 POST 带 `text`、`textClientId`；服务端先存照片消息（`text:''`，caption 字段隐藏），再存独立 user 文字消息并 `indexUserFacts`；返回两条。
+- 客户端先渲染照片、再渲染文字；只调用一次 `requestManualReply(photoId)`；无文字时不建文字消息。
+- 去重：照片 clientId 与文字 textClientId 都落到照片记录；同一 token 重发返回已有两条，不重复建。
+- 真实测试：1x1 黑图 + “这张图是什么颜色” → AI caption“纯黑色方形色块图片”，回复“黑的 纯黑 / 一点别的颜色都看不出来 / 你这是在测我眼神吧”。
+- 隔离测试：照片 `text:''`、文字独立、重复请求 `duplicate:true` 且 textId 相同。
 

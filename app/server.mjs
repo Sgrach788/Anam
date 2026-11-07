@@ -2966,12 +2966,23 @@ async function completeVisionCaption(dataUrl, note = '') {
       if (!mime || !['image/png', 'image/jpeg', 'image/webp'].includes(mime)) return sendJson(res, 400, { error: 'unsupported_photo' });
       const dims = imageDimensions(buffer, mime);
       if (!dims) return sendJson(res, 400, { error: 'invalid_photo' });
+      const text = String(payload.text || '').trim().slice(0, 2000);
+      const textClientId = String(payload.textClientId || '').trim().slice(0, 80);
       const clientId = String(payload.clientId || '').trim().slice(0, 80);
       if (clientId) {
         const existing = readJsonl(PHOTO_LOG).find((row) => !row.deleted && row.clientId === clientId);
         if (existing) {
           const existingMessage = messages.find((message) => message.type === 'image' && message.media?.ref === `photo:${existing.id}`);
-          if (existingMessage) return sendJson(res, 200, { ok: true, duplicate: true, message: existingMessage, photo: { id: existing.id, w: existing.w, h: existing.h, bytes: existing.bytes, caption: existing.caption || '' } });
+          const existingText = existing.textMessageId ? messages.find((message) => message.id === existing.textMessageId) : null;
+          if (existingMessage) return sendJson(res, 200, { ok: true, duplicate: true, message: existingMessage, textMessage: existingText, photo: { id: existing.id, w: existing.w, h: existing.h, bytes: existing.bytes, caption: existing.caption || '' } });
+        }
+      }
+      if (textClientId) {
+        const existingTextRecord = readJsonl(PHOTO_LOG).find((row) => !row.deleted && row.textClientId === textClientId && row.textMessageId);
+        if (existingTextRecord) {
+          const existingMessage = messages.find((message) => message.type === 'image' && message.media?.ref === `photo:${existingTextRecord.id}`);
+          const existingText = messages.find((message) => message.id === existingTextRecord.textMessageId);
+          if (existingMessage && existingText) return sendJson(res, 200, { ok: true, duplicate: true, message: existingMessage, textMessage: existingText, photo: { id: existingTextRecord.id, w: existingTextRecord.w, h: existingTextRecord.h, bytes: existingTextRecord.bytes, caption: existingTextRecord.caption || '' } });
         }
       }
       const id = crypto.randomBytes(9).toString('base64url');
@@ -2985,13 +2996,15 @@ async function completeVisionCaption(dataUrl, note = '') {
       const aiCaption = await completeVisionCaption(payload.dataUrl, userCaption);
       const caption = (aiCaption || userCaption).slice(0, 200);
       const captionBy = aiCaption ? 'ai' : (userCaption ? 'user' : '');
-      const record = { v: 1, id, file, mime, w: dims.w, h: dims.h, bytes: buffer.length, hash: sha256(buffer), caption, captionBy, captionAt: nowIso(), clientId, at: nowIso() };
+      const photoMessageId = crypto.randomUUID();
+      const textMessageId = text ? crypto.randomUUID() : '';
+      const record = { v: 1, id, file, mime, w: dims.w, h: dims.h, bytes: buffer.length, hash: sha256(buffer), caption, captionBy, captionAt: nowIso(), clientId, textClientId, textMessageId, at: nowIso() };
       appendJsonl(PHOTO_LOG, record);
       const message = append({
-        id: crypto.randomUUID(),
+        id: photoMessageId,
         role: 'user',
         type: 'image',
-        text: caption,
+        text: '',
         caption,
         captionBy: record.captionBy,
         captionAt: record.captionAt,
@@ -2999,7 +3012,20 @@ async function completeVisionCaption(dataUrl, note = '') {
         at: nowIso(),
       });
       publish('message', message);
-      return sendJson(res, 201, { ok: true, message, photo: { id, w: dims.w, h: dims.h, bytes: buffer.length, caption } });
+      let textMessage = null;
+      if (text) {
+        textMessage = append({
+          id: textMessageId,
+          role: 'user',
+          type: 'text',
+          text,
+          textClientId,
+          at: nowIso(),
+        });
+        indexUserFacts(textMessage);
+        publish('message', textMessage);
+      }
+      return sendJson(res, 201, { ok: true, message, textMessage, photo: { id, w: dims.w, h: dims.h, bytes: buffer.length, caption } });
     }
 
     if (url.pathname === '/api/photos' && req.method === 'GET') {

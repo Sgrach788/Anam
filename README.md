@@ -82,7 +82,7 @@
   - `sendPush` 加 10 秒超时；toast 3 秒。
 - **v45（2b 进行中）**：
   - 聊天输入栏手动选表情并发送；存在即可发，不看 AI 启用状态；
-  - 照片上传（JPG/PNG/WebP，客户端 JPEG 长边 2048），`image` 消息、`photo:` 引用、手动 caption；
+  - 照片上传（JPG/PNG/WebP，客户端 JPEG 长边 2048），`image` 消息、`photo:` 引用；照片不带 caption 行；
   - L1 图片占位 `[图片：caption]` / `[图片]`；照片进备份，终端显示张数/MB；
   - 表情软提示增加三种输出教学示例；
   - 目录上限 30→50。
@@ -93,7 +93,7 @@
 - **v47（收尾中）**：
   - 清理 `<p class="empty"></p>` 空占位：服务端清洗 + 前端不渲染空文本；历史唯一坏记录已移除；
   - 软频率改为“每约 2–3 条 1 张”，追赶句改为连续 2 条；
-  - 6 张扩库已导入并审核，目录 50/50；\n  - 照片发送前预览/取消；图片消息可删除并同步删除 `photos/` 文件；\n  - deepseek-flash 视觉 caption（同请求生成，`captionBy=ai`）；终端可编辑；发送 clientId 去重；看图等待态；回话请求带图片 base64。
+  - 6 张扩库已导入并审核，目录 50/50；\n  - 照片发送前预览/取消；图片消息可删除并同步删除 `photos/` 文件；\n  - deepseek-flash 视觉 caption（同请求生成，`captionBy=ai`，只进 L1/终端）；弹框“附带消息”独立成文字消息；双 clientId 去重；回话请求带图片 base64。
 
 ### 2.2 进行中 / 冻结
 
@@ -480,6 +480,7 @@ node tools\weather-test.mjs
 
 - DeepSeek API；Key 只保存在本机服务端，不进仓库。
 - 天气/地理编码：Open-Meteo（免费、无 Key）；只发送城市/坐标，不发送聊天内容。
+
 
 
 

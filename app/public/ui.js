@@ -533,10 +533,8 @@ function addImageBubble(message) {
   const ref = String(message.media?.ref || '');
   const photoId = ref.startsWith('photo:') ? ref.slice(6) : '';
   const image = el('img', 'message-photo');
-  image.alt = String(message.caption || message.media?.alt || '图片');
-  const caption = el('div', 'message-photo-caption', String(message.caption || ''));
+  image.alt = '图片';
   node.appendChild(image);
-  if (message.caption) node.appendChild(caption);
   if (message.role === 'user' && photoId) {
     const remove = el('button', 'image-delete', '×');
     remove.type = 'button';
@@ -572,7 +570,7 @@ function addImageBubble(message) {
       node.appendChild(el('div', 'side-msg', '图片读取失败'));
     });
   }
-  updateInboxPreview(message.caption || '[图片]', at);
+  updateInboxPreview('[图片]', at);
   scheduleScroll(message.role === 'user');
   return node;
 }
@@ -687,6 +685,7 @@ async function photoToDataUrl(file) {
 
 let pendingPhotoDataUrl = '';
 let pendingPhotoToken = '';
+let pendingPhotoTextToken = '';
 
 photoFile.addEventListener('change', async () => {
   const file = photoFile.files?.[0];
@@ -703,6 +702,7 @@ photoFile.addEventListener('change', async () => {
   try {
     pendingPhotoDataUrl = await photoToDataUrl(file);
     pendingPhotoToken = crypto.randomUUID();
+    pendingPhotoTextToken = crypto.randomUUID();
     photoPreviewImage.src = pendingPhotoDataUrl;
     photoCaption.value = input.value.trim();
     photoPreview.hidden = false;
@@ -716,32 +716,39 @@ photoPreviewCancel.addEventListener('click', () => {
   photoPreview.hidden = true;
   pendingPhotoDataUrl = '';
   pendingPhotoToken = '';
+  pendingPhotoTextToken = '';
 });
 
 photoPreviewSend.addEventListener('click', async () => {
   if (!pendingPhotoDataUrl) return;
   const dataUrl = pendingPhotoDataUrl;
-  const caption = photoCaption.value.trim();
+  const text = photoCaption.value.trim();
   const clientId = pendingPhotoToken;
+  const textClientId = pendingPhotoTextToken;
   photoPreview.hidden = true;
   pendingPhotoDataUrl = '';
   pendingPhotoToken = '';
+  pendingPhotoTextToken = '';
   photoPreviewSend.disabled = true;
   try {
     const response = await apiFetch('/api/photos', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ dataUrl, caption, clientId }),
+      body: JSON.stringify({ dataUrl, text, clientId, textClientId }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
     addMessageBubble(data.message);
     rememberMessage(data.message);
+    if (data.textMessage) {
+      addMessageBubble(data.textMessage);
+      rememberMessage(data.textMessage);
+    }
     writeMessageCache();
     input.value = '';
     input.style.height = 'auto';
     scheduleScroll(true);
-    toast(caption ? '图片和文字已发送' : '图片已发送');
+    toast('图片已发送');
     void requestManualReply(data.message.id, '她正在看图…');
   } catch (err) {
     toast(`发图失败：${err.message}`);
@@ -1010,7 +1017,7 @@ function renderAll(messages, { preserveScroll = false } = {}) {
   }
   const sorted = [...messages].sort((a, b) => (a.seq || 0) - (b.seq || 0));
   const latest = sorted.at(-1);
-  if (latest) updateInboxPreview(latest.type === 'sticker' ? stickerText(latest) : latest.type === 'image' ? (latest.caption || '[图片]') : latest.text, latest.at);
+  if (latest) updateInboxPreview(latest.type === 'sticker' ? stickerText(latest) : latest.type === 'image' ? '[图片]' : latest.text, latest.at);
   else updateInboxPreview('还没有消息');
   for (const m of sorted) addMessageBubble(m);
 
@@ -2871,15 +2878,7 @@ function handleFrame({ event, data, id }) {
     loadedMessages = loadedMessages.filter((item) => item.id !== data.id);
     writeMessageCache();
   } else if (event === 'message-updated') {
-    const node = rendered.get(data.id);
-    if (node) {
-      let caption = node.querySelector('.message-photo-caption');
-      if (caption) caption.textContent = data.caption || '';
-      if (!caption && data.caption) {
-        caption = el('div', 'message-photo-caption', data.caption);
-        node.appendChild(caption);
-      }
-    }
+    // caption 只用于 L1/终端，不进入聊天气泡。
   } else if (event === 'done') {
     if (data.jobId === awaitJob) { awaitJob = null; loadHeaderProfile(); }
   } else if (event === 'budget') {
@@ -3204,6 +3203,8 @@ window.addEventListener('unhandledrejection', (e) => {
 
 // 有口令就带着它问；没有的话 boot() 会收到 401 并弹口令框
 boot();
+
+
 
 
 
