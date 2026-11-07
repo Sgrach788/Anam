@@ -855,6 +855,17 @@ function buildContextMessages(now = new Date(), imageMessage = null) {
   });
   const imageUrl = imageMessage ? imageDataUrlFor(imageMessage) : '';
   if (imageUrl) {
+    const imageText = messageText(imageMessage);
+    let imageIndex = -1;
+    for (let i = context.length - 1; i >= 0; i--) {
+      if (context[i].role !== 'user' || Array.isArray(context[i].content)) continue;
+      const at = String(context[i].content).indexOf(imageText);
+      if (at >= 0) {
+        context[i] = { role: 'user', content: `${String(context[i].content).slice(0, at)}[图片]` };
+        imageIndex = i;
+        break;
+      }
+    }
     for (let i = context.length - 1; i >= 0; i--) {
       if (context[i].role !== 'user') continue;
       context[i] = {
@@ -865,6 +876,9 @@ function buildContextMessages(now = new Date(), imageMessage = null) {
         ],
       };
       break;
+    }
+    if (imageIndex < 0) {
+      // 消息不在 L1 窗口内时仍不把 caption 当本轮文字。
     }
   }
   return context;
@@ -2952,6 +2966,33 @@ async function completeVisionCaption(dataUrl, note = '') {
   }
 }
 
+async function finishPhotoCaption(photoId, dataUrl, userCaption = '') {
+  try {
+    const caption = await completeVisionCaption(dataUrl, userCaption);
+    if (!caption) return;
+    const rows = readJsonl(PHOTO_LOG);
+    const index = rows.findIndex((row) => row.id === photoId && !row.deleted);
+    if (index < 0) return;
+    rows[index] = { ...rows[index], caption, captionBy: 'ai', captionAt: nowIso() };
+    const tmp = `${PHOTO_LOG}.tmp`;
+    fs.writeFileSync(tmp, rows.map((row) => JSON.stringify(row)).join('\n') + (rows.length ? '\n' : ''), 'utf8');
+    fs.renameSync(tmp, PHOTO_LOG);
+    const ref = `photo:${photoId}`;
+    const message = messages.find((item) => item.type === 'image' && item.media?.ref === ref);
+    if (!message) return;
+    message.caption = caption;
+    message.captionBy = 'ai';
+    message.captionAt = nowIso();
+    if (message.media) message.media.alt = caption;
+    const msgTmp = `${LOG}.tmp`;
+    fs.writeFileSync(msgTmp, messages.map((item) => JSON.stringify(item)).join('\n') + (messages.length ? '\n' : ''), 'utf8');
+    fs.renameSync(msgTmp, LOG);
+    publish('message-updated', { ...message });
+  } catch (err) {
+    console.warn('[caption] background failed:', redactSecret(err.message));
+  }
+}
+
     if (url.pathname === '/api/photos' && req.method === 'POST') {
       let payload = {};
       try { payload = JSON.parse(await readBody(req, 12 * 1024 * 1024) || '{}'); } catch (err) {
@@ -2993,9 +3034,8 @@ async function completeVisionCaption(dataUrl, note = '') {
       fs.writeFileSync(tmp, buffer);
       fs.renameSync(tmp, target);
       const userCaption = String(payload.caption || '').trim().slice(0, 200);
-      const aiCaption = await completeVisionCaption(payload.dataUrl, userCaption);
-      const caption = (aiCaption || userCaption).slice(0, 200);
-      const captionBy = aiCaption ? 'ai' : (userCaption ? 'user' : '');
+      const caption = '';
+      const captionBy = '';
       const photoMessageId = crypto.randomUUID();
       const textMessageId = text ? crypto.randomUUID() : '';
       const record = { v: 1, id, file, mime, w: dims.w, h: dims.h, bytes: buffer.length, hash: sha256(buffer), caption, captionBy, captionAt: nowIso(), clientId, textClientId, textMessageId, at: nowIso() };
@@ -3025,6 +3065,7 @@ async function completeVisionCaption(dataUrl, note = '') {
         indexUserFacts(textMessage);
         publish('message', textMessage);
       }
+      void finishPhotoCaption(id, payload.dataUrl, userCaption);
       return sendJson(res, 201, { ok: true, message, textMessage, photo: { id, w: dims.w, h: dims.h, bytes: buffer.length, caption } });
     }
 

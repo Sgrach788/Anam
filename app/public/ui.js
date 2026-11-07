@@ -530,12 +530,13 @@ function addImageBubble(message) {
   const at = message.at || new Date().toISOString();
   maybeSeparator(at);
   const node = el('div', `msg image ${message.role === 'user' ? 'me' : 'ai'}`);
+  if (message.optimistic) node.classList.add('optimistic');
   const ref = String(message.media?.ref || '');
   const photoId = ref.startsWith('photo:') ? ref.slice(6) : '';
   const image = el('img', 'message-photo');
   image.alt = '图片';
   node.appendChild(image);
-  if (message.role === 'user' && photoId) {
+  if (message.role === 'user' && photoId && !message.optimistic) {
     const remove = el('button', 'image-delete', '×');
     remove.type = 'button';
     remove.setAttribute('aria-label', '删除这张图片');
@@ -560,7 +561,9 @@ function addImageBubble(message) {
     rendered.set(message.id, node);
   }
   list.appendChild(node);
-  if (photoId) {
+  if (message.localUrl) {
+    image.src = message.localUrl;
+  } else if (photoId) {
     void apiFetch(`/api/photos/${encodeURIComponent(photoId)}`).then(async (response) => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const blob = await response.blob();
@@ -730,31 +733,81 @@ photoPreviewSend.addEventListener('click', async () => {
   pendingPhotoToken = '';
   pendingPhotoTextToken = '';
   photoPreviewSend.disabled = true;
-  try {
-    const response = await apiFetch('/api/photos', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ dataUrl, text, clientId, textClientId }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-    addMessageBubble(data.message);
-    rememberMessage(data.message);
-    if (data.textMessage) {
-      addMessageBubble(data.textMessage);
-      rememberMessage(data.textMessage);
-    }
-    writeMessageCache();
-    input.value = '';
-    input.style.height = 'auto';
-    scheduleScroll(true);
-    toast('图片已发送');
-    void requestManualReply(data.message.id, '她正在看图…');
-  } catch (err) {
-    toast(`发图失败：${err.message}`);
-  } finally {
-    photoPreviewSend.disabled = false;
+
+  const optimisticImage = {
+    id: clientId,
+    role: 'user',
+    type: 'image',
+    text: '',
+    caption: '',
+    media: { ref: '', w: 0, h: 0, alt: '图片' },
+    localUrl: dataUrl,
+    optimistic: true,
+    at: new Date().toISOString(),
+  };
+  const optimisticText = text ? {
+    id: textClientId,
+    role: 'user',
+    type: 'text',
+    text,
+    optimistic: true,
+    at: new Date().toISOString(),
+  } : null;
+  addMessageBubble(optimisticImage);
+  if (optimisticText) {
+    const textNode = addMessageBubble(optimisticText);
+    if (textNode) textNode.classList.add('optimistic');
   }
+  scheduleScroll(true);
+
+  let sending = false;
+  const markFailed = (err) => {
+    for (const id of [clientId, textClientId].filter(Boolean)) {
+      const node = rendered.get(id);
+      if (!node) continue;
+      node.classList.add('failed');
+      node.title = err.message;
+      node.addEventListener('click', () => { void attempt(); }, { once: true });
+    }
+    photoPreviewSend.disabled = false;
+    toast(`发图失败：${err.message}（点气泡重试）`);
+  };
+
+  const attempt = async () => {
+    if (sending) return;
+    sending = true;
+    photoPreviewSend.disabled = true;
+    try {
+      const response = await apiFetch('/api/photos', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dataUrl, text, clientId, textClientId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      removeBubble(clientId);
+      if (textClientId) removeBubble(textClientId);
+      addMessageBubble(data.message);
+      rememberMessage(data.message);
+      if (data.textMessage) {
+        addMessageBubble(data.textMessage);
+        rememberMessage(data.textMessage);
+      }
+      writeMessageCache();
+      input.value = '';
+      input.style.height = 'auto';
+      scheduleScroll(true);
+      toast('图片已发送');
+      void requestManualReply(data.message.id, '她正在看图…');
+    } catch (err) {
+      markFailed(err);
+    } finally {
+      sending = false;
+      photoPreviewSend.disabled = false;
+    }
+  };
+
+  await attempt();
 });
 
 function addStickerBubble(message) {

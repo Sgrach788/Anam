@@ -1211,3 +1211,7 @@ body.console-open #consolePanel .console-content { padding-bottom: calc(env(safe
 .photo-caption-row { display: grid; grid-template-columns: 1fr auto; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; }
 .photo-caption-meta { grid-column: 1 / -1; color: var(--dim); font-size: 11px; }
 .photo-caption-row input { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+
+/* v47：照片乐观气泡失败态 */
+.msg.optimistic.failed { opacity: .65; outline: 1px solid #b45353; }
+.msg.optimistic.failed::after { content: '发送失败，点此重试'; display: block; margin-top: 4px; color: #e08b8b; font-size: 11px; }

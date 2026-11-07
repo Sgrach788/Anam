@@ -741,7 +741,7 @@ node tools\weather-test.mjs
 - `server.mjs` 较大，改动要定位函数，避免大范围重构。
 - 当前真实 embedding 未配置；P4 逻辑只在配置后生效。
 - v44 真机锁屏推送未由执行方直接确认；接口实测 Apple 201、sent=1。
-- v45 2b 仅部分：照片 caption 由用户输入，AI 自动 caption、发送前预览撤销、列表缩略图、首字等待、删消息删文件、终端 caption 编辑、删除联动未做。
+- v47 2b：AI 视觉 caption 后台生成、照片无 caption 行、附带消息独立文字、预览取消、删图删文件、终端 caption 编辑、clientId 去重、图片进入生成请求均已完成；仍缺列表缩略图、AI 预标注、真实 EXIF、恢复演练、20 轮频率。
 - v45 6 张新表情已导入并由 Tian 审核；目录 50/50。
 - v45 手动表情/照片目前不触发 AI 回复，只追加用户消息。
 - v44 真实 VAPID 已生成（keyMatch=true）、1 个 Apple 订阅、pushEnabled=true；天气城市仍未配置。
