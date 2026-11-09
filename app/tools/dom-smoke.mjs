@@ -152,7 +152,7 @@ const ids = [
   'inboxView', 'chatView', 'contactsView', 'aiProfileView', 'userProfileView', 'tabContacts', 'tabConsole', 'conversationCard', 'conversationSearch', 'inboxAiName', 'inboxAiAvatar', 'inboxPreview', 'inboxTime', 'inboxBadge', 'userAvatar', 'userName', 'userProfileOpen', 'userProfileBack', 'userAvatarPreview', 'userAvatarFile', 'userNameInput', 'userProfileSave', 'aiProfileOpen', 'aiProfileBack', 'chatBack', 'contactAnam', 'addAiPreview', 'infoPersona', 'infoTone', 'infoInitiative', 'infoBoundaries', 'profileAiAvatar', 'profileAiName', 'profileAiSignature',
   'embeddingBaseInput', 'embeddingModelInput', 'embeddingKeyInput', 'embeddingPriceInput', 'embeddingSaveBtn', 'embeddingClearBtn', 'embeddingTestBtn', 'embeddingMsg', 'memoryIndexBtn', 'memorySummarizeBtn', 'memoryStats', 'memorySearchForm', 'memorySearchInput', 'memoryGraph', 'memoryResults', 'summaryOpenBtn', 'summaryPanel', 'summaryBack', 'summaryList',
   'memeCounts', 'memeState', 'memeFile', 'memeMsg', 'memeGrid', 'memeEmpty', 'memeEntry', 'memeEntryCounts', 'memeEnabledToggle', 'memeDeleteDialog', 'memeDeleteText', 'memeDeleteCancel', 'memeDeleteConfirm', 'memeSection',
-  'memeProbability', 'memeProbabilityValue', 'memeMinGap', 'memeSoftFrequency', 'memeStrategyMsg', 'memeStrategyStats',
+  'memeProbability', 'memeProbabilityValue', 'memeMinGap', 'memeSoftFrequency', 'memeStrategyMsg', 'memeStrategyStats', 'memeAiBatch', 'memeAiMsg',
 ];
 for (const id of ids) byId.set(id, new FakeEl('div'));
 const spaceSubmit = new FakeEl('button'); spaceSubmit.type = 'submit'; byId.get('spaceComposer').appendChild(spaceSubmit);
@@ -448,5 +448,6 @@ for (const c of checks) {
 }
 console.log(`\n${checks.length - failed}/${checks.length} 通过${up ? '' : '（服务未起来）'}`);
 process.exit(failed || !up ? 1 : 0);
+
 
 

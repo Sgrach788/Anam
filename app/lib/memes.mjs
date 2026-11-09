@@ -1,4 +1,4 @@
-﻿// 表情包库的纯函数：ID、魔数、尺寸、标签、目录选择、备份校验。
+// 表情包库的纯函数：ID、魔数、尺寸、标签、目录选择、备份校验。
 // 不依赖 DOM / 网络；服务端、测试脚本共用。
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -12,6 +12,12 @@ export const MEME_LABEL_MAX = 20;
 export const MEME_TAGS_MAX = 2;
 export const MEME_TAG_MAX = 10;
 export const MEME_MAX_PER_REPLY = 1;
+// AI 预标注的封闭情绪词表：第一个 tag 必须来自这里。
+export const AI_EMOTIONS = Object.freeze([
+  '开心', '大笑', '喜欢', '兴奋', '生气', '无语', '疲惫', '难过', '哭', '疑惑',
+  '思考', '赞同', '打招呼', '惊讶', '害怕', '拒绝', '嘲讽', '害羞', '得意', '感谢',
+  '安慰', '卖萌', '搞怪', '其他',
+]);
 export const MEME_STRATEGY_DEFAULTS = Object.freeze({
   probability: 100,
   minGapReplies: 2,
@@ -71,6 +77,7 @@ export function memeSoftFrequencyBlock(enabled) {
     '连续 2 条回复都没有配图，且当前有合适选择时，优先配 1 张。',
     '遇到玩笑、鼓励、庆祝、共情或轻松接话，有贴切的表情就可以配图。',
     '没有合适表情时不要为凑比例勉强发送。',
+    '连续 4 条助手回复都没有配图时，本条必须配 1 张：从目录里选最贴切的一张，哪怕只是大致贴切；本条不受“没有合适表情时不要为凑比例勉强发送”的约束。',
     '用户明确要求时不受软频率参考约束。',
     '不要向用户解释频率判断。',
     '【输出示例，只学形式，不要照抄】',

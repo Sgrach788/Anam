@@ -1,4 +1,4 @@
-﻿// 界面层：渲染、输入、断线续传、口令、手势。网络细节在 api.js。
+// 界面层：渲染、输入、断线续传、口令、手势。网络细节在 api.js。
 import {
   setToken, checkPassword, getHealth, getMessages, postChat,
   openEvents, readSse, apiFetch,
@@ -179,11 +179,15 @@ const memeMinGap = document.getElementById('memeMinGap');
 const memeSoftFrequency = document.getElementById('memeSoftFrequency');
 const memeStrategyMsg = document.getElementById('memeStrategyMsg');
 const memeStrategyStats = document.getElementById('memeStrategyStats');
+const memeAiBatch = document.getElementById('memeAiBatch');
+const memeAiMsg = document.getElementById('memeAiMsg');
 let memeList = [];
 let memeEnabled = true;
 let memeDeleteTarget = null;
 let memeStrategyTimer = null;
 let memeStrategyDraft = {};
+let aiLabelAvailable = false;
+let aiLabelChecked = false;
 let terminalModule = '';
 let lastHealth = null;
 let lastStatus = null;
@@ -778,10 +782,12 @@ photoPreviewSend.addEventListener('click', async () => {
     sending = true;
     photoPreviewSend.disabled = true;
     try {
+      let thumbDataUrl = '';
+      try { thumbDataUrl = await makeThumbDataUrl(dataUrl); } catch { /* 缩略图失败不阻塞原图 */ }
       const response = await apiFetch('/api/photos', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ dataUrl, text, clientId, textClientId }),
+        body: JSON.stringify({ dataUrl, text, clientId, textClientId, thumbDataUrl }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
@@ -1444,6 +1450,69 @@ async function loadPhotoStats() {
   } catch { /* 保持 0 */ }
 }
 
+async function blobToDataUrl(blob) {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('read failed'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function makeThumbDataUrl(source) {
+  const url = typeof source === 'string' ? source : URL.createObjectURL(source);
+  try {
+    const image = new Image();
+    image.src = url;
+    await image.decode();
+    const scale = Math.min(1, 512 / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.82);
+  } finally {
+    if (typeof source !== 'string') URL.revokeObjectURL(url);
+  }
+}
+
+async function openPhotoOriginal(id) {
+  try {
+    const response = await apiFetch(`/api/photos/${encodeURIComponent(id)}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    window.open(URL.createObjectURL(blob), '_blank', 'noopener');
+  } catch (err) {
+    toast(`打开原图失败：${err.message}`);
+  }
+}
+
+async function ensurePhotoThumb(photo, image) {
+  const setBlob = async (blob) => { image.src = URL.createObjectURL(blob); };
+  try {
+    const thumb = await apiFetch(photo.thumbUrl);
+    if (thumb.ok) return setBlob(await thumb.blob());
+    if (!photo.hasThumb) {
+      const original = await apiFetch(`/api/photos/${encodeURIComponent(photo.id)}`);
+      if (!original.ok) throw new Error(`HTTP ${original.status}`);
+      const blob = await original.blob();
+      await setBlob(blob);
+      const thumbDataUrl = await makeThumbDataUrl(blob);
+      const saved = await apiFetch(`/api/photos/${encodeURIComponent(photo.id)}/thumb`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dataUrl: thumbDataUrl }),
+      });
+      if (saved.ok) {
+        const thumbBlob = await (await fetch(thumbDataUrl)).blob();
+        await setBlob(thumbBlob);
+      }
+    }
+  } catch {
+    /* 图片失败不阻塞列表 */
+  }
+}
+
 async function loadPhotoList() {
   if (!photoList) return;
   photoList.textContent = '读取中…';
@@ -1459,6 +1528,11 @@ async function loadPhotoList() {
     }
     for (const photo of rows) {
       const row = el('div', 'photo-caption-row');
+      const image = el('img', 'photo-caption-thumb');
+      image.alt = '照片缩略图';
+      image.loading = 'lazy';
+      image.title = '点开原图';
+      image.addEventListener('click', () => { void openPhotoOriginal(photo.id); });
       const meta = el('div', 'photo-caption-meta', `${photo.w}×${photo.h} · ${(Number(photo.bytes) / 1024 / 1024).toFixed(2)} MB · ${photo.captionBy === 'ai' ? 'AI caption' : '手写 caption'}`);
       const input = document.createElement('input');
       input.value = photo.caption || '';
@@ -1483,10 +1557,12 @@ async function loadPhotoList() {
           save.disabled = false;
         }
       });
+      row.appendChild(image);
       row.appendChild(meta);
       row.appendChild(input);
       row.appendChild(save);
       photoList.appendChild(row);
+      void ensurePhotoThumb(photo, image);
     }
   } catch (err) {
     photoList.textContent = `照片列表读取失败：${err.message}`;
@@ -2307,8 +2383,22 @@ function scheduleMemeStrategy(patch) {
   }, 300);
 }
 
+async function refreshAiLabelAvailability() {
+  if (aiLabelChecked) return;
+  try {
+    const response = await apiFetch('/api/settings');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const info = await response.json();
+    aiLabelAvailable = info.apiKeyConfigured === true && info.mode !== 'mock';
+  } catch { aiLabelAvailable = false; }
+  aiLabelChecked = true;
+  memeAiBatch.disabled = !aiLabelAvailable;
+  memeAiMsg.textContent = aiLabelAvailable ? '' : 'AI 草稿需要真实模型 key，mock 模式下不可用。';
+}
+
 async function loadMemes({ render = null } = {}) {
   try {
+    await refreshAiLabelAvailability();
     const response = await apiFetch('/api/memes');
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
@@ -2364,16 +2454,20 @@ function renderMemeGrid() {
     label.type = 'text';
     label.maxLength = 20;
     label.placeholder = '名称 / 描述（≤20 字）';
-    label.value = meme.label || '';
+    label.value = meme.label || meme.ai_label || '';
     label.addEventListener('change', () => patchMeme(meme.id, { label: label.value }));
     card.appendChild(label);
 
     const tags = el('input');
     tags.type = 'text';
     tags.placeholder = '标签（最多 2 个，逗号分隔）';
-    tags.value = (meme.tags || []).join('，');
+    tags.value = (meme.tags?.length ? meme.tags : meme.ai_tags || []).join('，');
     tags.addEventListener('change', () => patchMeme(meme.id, { tags: tags.value }));
     card.appendChild(tags);
+
+    if (meme.ai_label || meme.ai_tags?.length) {
+      card.appendChild(el('div', 'meme-ai-draft', `AI 草稿：${meme.ai_label || '—'} / ${(meme.ai_tags || []).join('、') || '—'}`));
+    }
 
     const flags = el('div', 'meme-flags');
     const addFlag = (key, text) => {
@@ -2381,8 +2475,15 @@ function renderMemeGrid() {
       const input = el('input');
       input.type = 'checkbox';
       input.checked = Boolean(meme[key]);
-      if (key === 'reviewed') input.disabled = !String(meme.label || '').trim();
-      input.addEventListener('change', () => patchMeme(meme.id, { [key]: input.checked }));
+      if (key === 'reviewed') input.disabled = !String(meme.label || meme.ai_label || '').trim();
+      input.addEventListener('change', () => {
+        const patch = { [key]: input.checked };
+        if (key === 'reviewed' && input.checked && !String(meme.label || '').trim()) {
+          patch.label = label.value;
+          patch.tags = tags.value;
+        }
+        patchMeme(meme.id, patch);
+      });
       box.appendChild(input);
       box.appendChild(document.createTextNode(text));
       flags.appendChild(box);
@@ -2394,12 +2495,36 @@ function renderMemeGrid() {
 
     if (meme.corrupted) card.appendChild(el('div', 'meme-broken', '文件缺失，历史消息会显示占位'));
     const actions = el('div', 'meme-actions');
+    const aiDraft = el('button', 'ghost compact', 'AI 草稿');
+    aiDraft.type = 'button';
+    aiDraft.disabled = !aiLabelAvailable;
+    aiDraft.title = aiLabelAvailable ? '生成草稿，不会自动审核' : '需要真实模型 key';
+    aiDraft.addEventListener('click', () => { void generateMemeAiDraft(meme.id, aiDraft); });
+    actions.appendChild(aiDraft);
     const remove = el('button', 'ghost', '删除');
     remove.type = 'button';
     remove.addEventListener('click', () => openMemeDelete(meme));
     actions.appendChild(remove);
     card.appendChild(actions);
     memeGrid.appendChild(card);
+  }
+}
+
+async function generateMemeAiDraft(id, button) {
+  if (!aiLabelAvailable) return;
+  button.disabled = true;
+  memeAiMsg.textContent = '正在生成 AI 草稿…';
+  try {
+    const response = await apiFetch(`/api/memes/${encodeURIComponent(id)}/ai-label`, { method: 'POST' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
+    const index = memeList.findIndex((meme) => meme.id === id);
+    if (index >= 0) memeList[index] = data.meme;
+    memeAiMsg.textContent = `AI 草稿已生成：${data.meme?.ai_label || ''}`;
+    renderMemeGrid();
+  } catch (err) {
+    memeAiMsg.textContent = `AI 草稿失败：${err.message}`;
+    button.disabled = false;
   }
 }
 
@@ -2450,6 +2575,25 @@ memeMinGap.addEventListener('change', () => {
 });
 memeSoftFrequency.addEventListener('change', () => {
   scheduleMemeStrategy({ softFrequency: memeSoftFrequency.checked });
+});
+
+memeAiBatch.addEventListener('click', async () => {
+  if (!aiLabelAvailable) return;
+  memeAiBatch.disabled = true;
+  memeAiMsg.textContent = '正在为待审核生成草稿…';
+  try {
+    const response = await apiFetch('/api/memes/ai-label-batch', { method: 'POST' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
+    const ok = (data.results || []).filter((item) => item.ok).length;
+    const failed = (data.results || []).filter((item) => !item.ok).length;
+    memeAiMsg.textContent = `批量完成：成功 ${ok}，失败 ${failed}，跳过已有草稿。`;
+    await loadMemes();
+  } catch (err) {
+    memeAiMsg.textContent = `批量生成失败：${err.message}`;
+  } finally {
+    memeAiBatch.disabled = !aiLabelAvailable;
+  }
 });
 
 memeFile.addEventListener('change', async (event) => {  const files = [...(event.target.files || [])];

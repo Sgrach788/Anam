@@ -1215,3 +1215,9 @@ body.console-open #consolePanel .console-content { padding-bottom: calc(env(safe
 /* v47：照片乐观气泡失败态 */
 .msg.optimistic.failed { opacity: .65; outline: 1px solid #b45353; }
 .msg.optimistic.failed::after { content: '发送失败，点此重试'; display: block; margin-top: 4px; color: #e08b8b; font-size: 11px; }
+
+/* v48：终端照片缩略图 */
+.photo-caption-thumb { grid-column: 1 / -1; width: 100%; max-height: 180px; object-fit: cover; border-radius: 8px; background: var(--panel); cursor: pointer; }
+
+/* v48：AI 预标注草稿 */
+.meme-ai-draft { padding: 4px 6px; color: var(--dim); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }

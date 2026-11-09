@@ -1296,4 +1296,19 @@
 - 当前库 62 / 启用 50 / 待审 12 / 目录 50。
 - 5 张旧超限图现在在新上限内但仍不自动导入；>2MB 仍跳过。
 - SW 升到 `companion-v47-2026-11-07-p1`。
+## 主选补导核对 — 2026-11-07
+
+- 9 张主选实到 7 张：不够吃（原有 but disabled）、你这白吃饭的猫、你是猪、穷、气死偶咧、听哭了、猫儿这个邪恶。
+- `11N11_记下怪话` 重新下载成功：1,537,294 字节，SHA-1 `d2b5c211fdb4` 匹配，已导入 `BjqAHw0Fhak8`（reviewed:false/enabled:false）。\n- 仅剩 `12N08_汉皮` 2,501,552 字节，超 2MB。
+- 9 张备选保留，不删除不改字段；当前库 68，待审 18。
+- 报告：`app/data/meme-catalog-main-import-2026-11-07.json`。
+## v48：V2 收尾四项 — 2026-11-09
+
+- 4 轮强制：`memeSoftFrequencyBlock` 在“没有合适…”后追加连续 4 条必配一张；门控不动。
+- 终端标签：`提示“每约 2–3 条回复 1 张”`。
+- 照片缩略图：`thumbs/` 512 JPEG；新图前端 canvas 上传，旧图用 Pillow 批量补 15 张；`GET /api/photos` 返回 thumbUrl，终端列表渲染，点开鉴权原图；备份含 thumbs。
+- AI 预标注：`AI_EMOTIONS` 词表；`ai_label/ai_tags/ai_labeled_at`；单张 `/api/memes/:id/ai-label`、批量 `/api/memes/ai-label-batch`（跳过已有草稿）；只写 ai_*，不自动审核；控制台按钮、审核预填、mock/无 key 禁用。
+- 真实单张测试：`记下怪话` 草稿为“围观群友怪话，一脸无语 / 无语、群聊”，`label/tags` 未变。
+- 版本 0.2.48 / SW `companion-v48-2026-11-09`。
+- 测试：meme-strategy 20/20、meme-test 31/31、reply 25/25、dom 66/66。
 

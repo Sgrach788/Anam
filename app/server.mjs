@@ -14,7 +14,7 @@ import { dateContextLine } from './lib/calendar.mjs';
 import { buildWeatherLine, weatherFresh, weatherText } from './lib/weather.mjs';
 import { generateVapidKeys, sendPush, vapidPairMatches } from './lib/push.mjs';
 import {
-  MEME_MAX_BYTES, MEME_MAX_COUNT, MEME_STATIC_EDGE,
+  MEME_MAX_BYTES, MEME_MAX_COUNT, MEME_STATIC_EDGE, AI_EMOTIONS,
   isSafeMemeId, newMemeId, sanitizeLabel, sanitizeTags,
   sniffMime, imageDimensions, sha256, memeRef, mediaRefId, selectCatalog, memePromptBlock,
   memeStrategyFromConfig, memeStrategyPatch, rollMemeGate,
@@ -38,6 +38,7 @@ const MEME_PREVIEW_DIR = path.join(MEME_DIR, 'previews');
 const WEATHER_CACHE_FILE = path.join(DATA, 'weather.json');
 const PUSH_LOG = path.join(DATA, 'push-subscriptions.jsonl');
 const PHOTO_DIR = path.join(DATA, 'photos');
+const PHOTO_THUMB_DIR = path.join(PHOTO_DIR, 'thumbs');
 const PHOTO_LOG = path.join(DATA, 'photos.jsonl');
 const MEME_PREVIEW_MAX_BYTES = 300 * 1024;
 const PORT = Number(process.env.PORT || 8787);
@@ -215,6 +216,9 @@ function normalizeMemeRecord(raw) {
     hash: String(raw.hash || ''),
     label: sanitizeLabel(raw.label),
     tags: sanitizeTags(raw.tags),
+    ai_label: sanitizeLabel(raw.ai_label),
+    ai_tags: sanitizeTags(raw.ai_tags),
+    ai_labeled_at: typeof raw.ai_labeled_at === 'string' && raw.ai_labeled_at ? raw.ai_labeled_at : null,
     reviewed: raw.reviewed === true,
     reviewed_at: raw.reviewed ? (raw.reviewed_at || nowIso()) : null,
     enabled: raw.enabled !== false,
@@ -233,6 +237,7 @@ function loadMemes() {
   fs.mkdirSync(MEME_DIR, { recursive: true });
   fs.mkdirSync(MEME_PREVIEW_DIR, { recursive: true });
   fs.mkdirSync(PHOTO_DIR, { recursive: true });
+  fs.mkdirSync(PHOTO_THUMB_DIR, { recursive: true });
   memes.length = 0;
   memesById.clear();
   corruptedMemes.clear();
@@ -2255,6 +2260,33 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    if (url.pathname === '/api/memes/ai-label-batch' && req.method === 'POST') {
+      const targets = memes.filter((record) => !record.reviewed && !record.ai_label);
+      const results = [];
+      for (const record of targets) {
+        try {
+          const result = await generateMemeDraft(record, { overwrite: false });
+          results.push({ id: record.id, ok: true, skipped: result.skipped, meme: result.meme });
+        } catch (err) {
+          results.push({ id: record.id, ok: false, error: redactSecret(err.message) });
+        }
+      }
+      return sendJson(res, 200, { ok: true, total: targets.length, results });
+    }
+
+    const memeAiMatch = url.pathname.match(/^\/api\/memes\/([^/]+)\/ai-label$/u);
+    if (memeAiMatch && req.method === 'POST') {
+      const id = memeAiMatch[1];
+      const record = isSafeMemeId(id) ? memesById.get(id) : null;
+      if (!record) return sendJson(res, 404, { error: 'meme_not_found' });
+      try {
+        const result = await generateMemeDraft(record, { overwrite: true });
+        return sendJson(res, 200, { ok: true, skipped: result.skipped, meme: result.meme });
+      } catch (err) {
+        return sendJson(res, err.status || 500, { error: err.code || 'ai_label_failed', message: redactSecret(err.message) });
+      }
+    }
+
     if (url.pathname === '/api/memes' && req.method === 'POST') {
       let payload = {};
       try {
@@ -2966,6 +2998,103 @@ async function completeVisionCaption(dataUrl, note = '') {
   }
 }
 
+function savePhotoThumb(id, dataUrl) {
+  const match = /^data:([^;,]+)?;base64,([\s\S]+)$/u.exec(String(dataUrl || ''));
+  if (!match) throw new Error('invalid_thumb');
+  const buffer = Buffer.from(match[2], 'base64');
+  if (!buffer.length || buffer.length > 800 * 1024) throw new Error('thumb_too_large');
+  const mime = sniffMime(buffer);
+  if (!mime || !['image/png', 'image/jpeg', 'image/webp'].includes(mime)) throw new Error('unsupported_thumb');
+  const dims = imageDimensions(buffer, mime);
+  if (!dims || Math.max(dims.w, dims.h) > 512) throw new Error('thumb_dimensions');
+  const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
+  const thumbFile = `${id}.thumb.${ext}`;
+  const target = path.join(PHOTO_THUMB_DIR, path.basename(thumbFile));
+  const tmp = path.join(PHOTO_THUMB_DIR, `.tmp-${id}`);
+  fs.writeFileSync(tmp, buffer);
+  fs.renameSync(tmp, target);
+  return { thumbFile, thumbMime: mime, thumbW: dims.w, thumbH: dims.h, thumbBytes: buffer.length };
+}
+
+function photoThumbPath(record) {
+  if (!record?.thumbFile) return '';
+  return path.join(PHOTO_THUMB_DIR, path.basename(record.thumbFile));
+}
+
+async function completeMemeDraft(dataUrl) {
+  const cfg = loadConfig();
+  if (!cfg.apiKey) throw Object.assign(new Error('还没配置 API key'), { code: 'missing_api_key', status: 503 });
+  if (budgetState().blocked) throw Object.assign(new Error('今日预算已用完'), { code: 'budget_exceeded', status: 402 });
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 30000);
+  try {
+    const r = await fetch(`${cfg.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${cfg.apiKey}` },
+      body: JSON.stringify({
+        model: cfg.model,
+        messages: [
+          { role: 'system', content: `你是表情包标注助手。只输出 JSON，不要解释：{"label":"不超过20字的内容/情绪描述","tags":["情绪词","场景词"]}。tags 最多2个，第一个必须从这些情绪词中选：${AI_EMOTIONS.join('、')}。` },
+          { role: 'user', content: [
+            { type: 'text', text: '请为这张表情包写标签草稿。' },
+            { type: 'image_url', image_url: { url: dataUrl } },
+          ] },
+        ],
+        max_tokens: 300,
+        temperature: 0.2,
+        stream: false,
+      }),
+      signal: ac.signal,
+    });
+    if (!r.ok) {
+      const detail = await r.text().catch(() => '');
+      throw new Error(`标注接口 HTTP ${r.status}${detail ? '：' + redactSecret(detail, cfg.apiKey).slice(0, 160) : ''}`);
+    }
+    const j = await r.json();
+    const content = String(j.choices?.[0]?.message?.content || '').trim();
+    const usage = j.usage || null;
+    recordUsage({
+      kind: 'meme-label', mode: 'live', model: cfg.model,
+      tokensIn: Number(usage?.prompt_tokens) || 0, tokensOut: Number(usage?.completion_tokens) || 0,
+      estimated: !usage, costYuan: costOf(Number(usage?.prompt_tokens) || 0, Number(usage?.completion_tokens) || 0),
+      userMsgId: null, replyId: null,
+    });
+    if (!content) throw new Error('标注返回为空');
+    const jsonText = content.replace(/^```(?:json)?\s*/iu, '').replace(/```$/u, '').trim();
+    return JSON.parse(jsonText);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function validateMemeDraft(draft) {
+  const label = sanitizeLabel(draft?.label);
+  const tags = sanitizeTags(draft?.tags);
+  if (!label) return null;
+  if (!Array.isArray(draft?.tags) || !draft.tags.length || draft.tags.length > 2) return null;
+  if (!tags.length || !AI_EMOTIONS.includes(tags[0])) return null;
+  return { label, tags };
+}
+
+async function generateMemeDraft(record, { overwrite = false } = {}) {
+  if (isMockMode()) throw Object.assign(new Error('mock 模式下不可用'), { status: 409, code: 'mock_mode' });
+  if (!record) throw Object.assign(new Error('meme_not_found'), { status: 404 });
+  if (record.ai_label && !overwrite) return { skipped: true, meme: memeView(record) };
+  const file = path.join(MEME_DIR, record.file);
+  const buffer = fs.readFileSync(file);
+  const dataUrl = `data:${record.mime || 'image/gif'};base64,${buffer.toString('base64')}`;
+  const draft = validateMemeDraft(await completeMemeDraft(dataUrl));
+  if (!draft) throw Object.assign(new Error('标注结果未通过校验'), { status: 422 });
+  await withMemeWrite(() => {
+    record.ai_label = draft.label;
+    record.ai_tags = draft.tags;
+    record.ai_labeled_at = nowIso();
+    record.updated_at = nowIso();
+    writeMemesFile();
+  });
+  return { skipped: false, meme: memeView(record) };
+}
+
 async function finishPhotoCaption(photoId, dataUrl, userCaption = '') {
   try {
     const caption = await completeVisionCaption(dataUrl, userCaption);
@@ -3036,9 +3165,14 @@ async function finishPhotoCaption(photoId, dataUrl, userCaption = '') {
       const userCaption = String(payload.caption || '').trim().slice(0, 200);
       const caption = '';
       const captionBy = '';
+      let thumb = {};
+      if (payload.thumbDataUrl) {
+        try { thumb = savePhotoThumb(id, payload.thumbDataUrl); }
+        catch { try { fs.rmSync(target, { force: true }); } catch { /* ignore */ } return sendJson(res, 400, { error: 'invalid_thumb' }); }
+      }
       const photoMessageId = crypto.randomUUID();
       const textMessageId = text ? crypto.randomUUID() : '';
-      const record = { v: 1, id, file, mime, w: dims.w, h: dims.h, bytes: buffer.length, hash: sha256(buffer), caption, captionBy, captionAt: nowIso(), clientId, textClientId, textMessageId, at: nowIso() };
+      const record = { v: 1, id, file, mime, w: dims.w, h: dims.h, bytes: buffer.length, hash: sha256(buffer), caption, captionBy, captionAt: nowIso(), ...thumb, clientId, textClientId, textMessageId, at: nowIso() };
       appendJsonl(PHOTO_LOG, record);
       const message = append({
         id: photoMessageId,
@@ -3071,7 +3205,15 @@ async function finishPhotoCaption(photoId, dataUrl, userCaption = '') {
 
     if (url.pathname === '/api/photos' && req.method === 'GET') {
       const rows = readJsonl(PHOTO_LOG).filter((row) => !row.deleted).slice(-50).reverse();
-      return sendJson(res, 200, { photos: rows.map((row) => ({ id: row.id, w: row.w, h: row.h, bytes: row.bytes, caption: row.caption || '', captionBy: row.captionBy || '', captionAt: row.captionAt || '', at: row.at || '' })) });
+      return sendJson(res, 200, {
+        photos: rows.map((row) => ({
+          id: row.id, w: row.w, h: row.h, bytes: row.bytes,
+          caption: row.caption || '', captionBy: row.captionBy || '', captionAt: row.captionAt || '', at: row.at || '',
+          hasThumb: Boolean(row.thumbFile && fs.existsSync(photoThumbPath(row))),
+          thumbUrl: `/api/photos/${encodeURIComponent(row.id)}/thumb`,
+          thumbW: Number(row.thumbW) || 0, thumbH: Number(row.thumbH) || 0,
+        })),
+      });
     }
 
     if (url.pathname === '/api/photos/stats' && req.method === 'GET') {
@@ -3097,6 +3239,7 @@ async function finishPhotoCaption(photoId, dataUrl, userCaption = '') {
         const record = rows.find((row) => row.id === photoId);
         if (record?.file) {
           try { fs.rmSync(path.join(PHOTO_DIR, path.basename(record.file)), { force: true }); photoRemoved = true; } catch { /* ignore */ }
+          try { const thumb = photoThumbPath(record); if (thumb) fs.rmSync(thumb, { force: true }); } catch { /* ignore */ }
         }
       }
       const tmp = `${LOG}.tmp`;
@@ -3104,6 +3247,33 @@ async function finishPhotoCaption(photoId, dataUrl, userCaption = '') {
       fs.renameSync(tmp, LOG);
       publish('message-deleted', { id, photoRemoved });
       return sendJson(res, 200, { ok: true, id, photoRemoved });
+    }
+
+    const photoThumbMatch = url.pathname.match(/^\/api\/photos\/([A-Za-z0-9_-]+)\/thumb$/u);
+    if (photoThumbMatch && req.method === 'POST') {
+      let payload = {};
+      try { payload = JSON.parse(await readBody(req, 2 * 1024 * 1024) || '{}'); } catch { return sendJson(res, 400, { error: 'invalid_json' }); }
+      const rows = readJsonl(PHOTO_LOG);
+      const index = rows.findIndex((row) => row.id === photoThumbMatch[1] && !row.deleted);
+      if (index < 0) return sendJson(res, 404, { error: 'photo_not_found' });
+      try {
+        const thumb = savePhotoThumb(rows[index].id, payload.dataUrl);
+        rows[index] = { ...rows[index], ...thumb };
+        const tmp = `${PHOTO_LOG}.tmp`;
+        fs.writeFileSync(tmp, rows.map((row) => JSON.stringify(row)).join('\n') + (rows.length ? '\n' : ''), 'utf8');
+        fs.renameSync(tmp, PHOTO_LOG);
+        return sendJson(res, 200, { ok: true, thumb });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message || 'invalid_thumb' });
+      }
+    }
+    if (photoThumbMatch && req.method === 'GET') {
+      const record = readJsonl(PHOTO_LOG).find((row) => row.id === photoThumbMatch[1] && !row.deleted);
+      const file = photoThumbPath(record);
+      if (!file || !fs.existsSync(file)) return sendJson(res, 404, { error: 'thumb_not_found' });
+      res.writeHead(200, { 'content-type': record.thumbMime || 'image/jpeg', 'cache-control': 'private, max-age=31536000, immutable' });
+      fs.createReadStream(file).pipe(res);
+      return;
     }
 
     const photoMatch = url.pathname.match(/^\/api\/photos\/([A-Za-z0-9_-]+)$/u);
@@ -3246,6 +3416,10 @@ setInterval(() => { void refreshWeather(); }, 60 * 60 * 1000).unref();
 server.listen(PORT, HOST, () => {
   console.log(`[companion] http://${HOST}:${PORT}  mode=${isMockMode() ? 'mock' : 'live'}  schema=v${SCHEMA}  history=${messages.length}  data=${DATA}  auth=${loadConfig().accessPassword ? 'on' : 'off'}`);
 });
+
+
+
+
 
 
 

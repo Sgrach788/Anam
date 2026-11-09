@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
@@ -278,14 +278,16 @@
             <input id="memeMinGap" type="number" min="0" max="5" step="1" />
             <span class="muted">条 AI 完整回复</span>
           </div>
-          <label class="meme-toggle"><span>提示“每约 4 条回复 1 张”</span><input id="memeSoftFrequency" type="checkbox" /></label>
+          <label class="meme-toggle"><span>提示“每约 2–3 条回复 1 张”</span><input id="memeSoftFrequency" type="checkbox" /></label>
           <p class="muted">每条回复最多 1 张（固定）</p>
           <p class="muted" id="memeStrategyStats">最近 AI 回复：—</p>
         </div>
         <div class="meme-upload">
           <label class="upload-btn">上传表情<input id="memeFile" type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden /></label>
+          <button id="memeAiBatch" class="ghost compact" type="button">为待审核生成草稿</button>
           <span id="memeMsg" class="side-msg"></span>
         </div>
+        <div id="memeAiMsg" class="side-msg" role="status"></div>
         <div id="memeGrid" class="meme-grid"></div>
         <div id="memeEmpty" class="muted" hidden>还没有表情包。先上传几张，再填名称、审核和启用。</div>
       </section>
