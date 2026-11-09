@@ -10,6 +10,7 @@ export const TIME_RULES = [
 export const META_FORMAT = '在可见回复正文结束后，最后追加一个独立的 <anam-meta>JSON</anam-meta> 内部块，不能在正文中提及这个块。JSON 格式为 {"emotion":{"pleasure":-1到1,"energy":0到1},"signature":"不超过56字的AI自身短想法，没变化时空字符串","spacePost":"AI自身动态，没有合适内容时空字符串","meme":"可选，表情包目录里的 id；不合适时留空字符串"}。';
 
 export const STICKER_BAN = '正文禁止书写 [表情] 格式；表情只能通过 <anam-meta> 的 meme 字段选择。';
+export const HTML_BAN = '正文禁止输出任何 HTML 标签（包括 <img>、<a>、<div>、<span> 等）；需要发图只用 <anam-meta> 的 meme 字段选表情，或用已有的发照片机制，不要自己拼 HTML、不要贴图片直链当标签。';
 
 export const EMOTION_RULES = '情绪只表达你自己的愉悦度与活跃度。签名和动态只写你自身，不提、不暗示用户身份、经历、偏好或隐私；动态必须是独立于用户当前内容的自身想法或状态，不能改写用户刚说的事，不确定就留空。';
 
@@ -21,6 +22,7 @@ export function buildStableSystemPrefix({ persona = '', profileText = '' } = {})
     TIME_RULES,
     META_FORMAT,
     STICKER_BAN,
+    HTML_BAN,
     EMOTION_RULES,
   ].filter(Boolean).join('\n\n');
 }

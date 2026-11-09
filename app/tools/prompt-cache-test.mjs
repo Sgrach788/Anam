@@ -1,7 +1,7 @@
 // P0 验收：稳定前缀不随时间/记忆/动态/目录变化。
 import {
   buildStableSystemPrefix, buildSystemContent, stablePrefixOf,
-  TIME_RULES, META_FORMAT, STICKER_BAN, EMOTION_RULES,
+  TIME_RULES, META_FORMAT, STICKER_BAN, HTML_BAN, EMOTION_RULES,
 } from '../lib/prompt.mjs';
 
 const checks = [];
@@ -23,6 +23,7 @@ const b = buildSystemContent({
   nowLine: 'NOW-B',
 });
 check('两次构建稳定前缀逐字节相同', stablePrefixOf(a, stable) === stable && stablePrefixOf(b, stable) === stable);
+check('稳定前缀包含 HTML 禁令', stable.includes(HTML_BAN) && stable.includes('正文禁止输出任何 HTML 标签'));
 check('稳定前缀不含时间行', !stable.includes('NOW-'));
 check('稳定前缀不含记忆/动态/目录', !stable.includes('MEMORY-') && !stable.includes('POSTS-') && !stable.includes('CATALOG-'));
 check('稳定前缀含时间约束/元数据/禁表情/情绪指令',

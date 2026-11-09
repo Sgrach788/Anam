@@ -1,4 +1,4 @@
-# Companion — 项目交接稿（截至 v48 / 0.2.48）
+# Companion — 项目交接稿（截至 v49 / 0.2.49）
 
 > 用途：给下一个接手本项目的 AI 或开发者。
 > 本文件已随项目文档同步到私有 GitHub；本地路径为 `D:\Companion\HANDOFF.md`。
@@ -87,8 +87,8 @@ Tian 提出问题
 | 项 | 当前值 |
 |---|---|
 | 阶段 | **V2「表情包」进行中** |
-| 产品版本 | **0.2.48** |
-| SW 版本 | **companion-v48-2026-11-09** |
+| 产品版本 | **0.2.49** |
+| SW 版本 | **companion-v49-2026-11-09** |
 | 数据 schema | **1** |
 | 运行方式 | Windows PC Node daemon + PWA |
 | 依赖 | **零 npm 依赖**（Node 内置模块） |
@@ -115,7 +115,7 @@ Tian 提出问题
   PATCH  = 本阶段第 N 次改版
   当前：0.2.44
 
-SW 版本：companion-v48-2026-11-09
+SW 版本：companion-v49-2026-11-09
 数据 schema：1
 ```
 
@@ -261,6 +261,7 @@ V4 之后不自动进入 V5/V6；只做维护和按需讨论。
 | v46 | 推送标题跟资料名、表情/照片触发一次回复、Lucide 图标 | ✅ |
 | v47 | 空占位清理、频率 2–3 条、6 张扩库导入（待审） | 🟡 部分 |
 | v48 | 4 轮强制、照片 512 缩略图、AI 预标注草稿 | ✅ |
+| v49 | HTML 标签禁令/流式清洗、服务端 streak 注入 | ✅ |
 
 ### 4.1 已完成的关键数字
 
@@ -689,14 +690,14 @@ node tools\weather-test.mjs
 
 | 测试 | 结果 |
 |---|---|
-| reply | 25/25 |
+| reply | 30/30 |
 | embedding-policy | 6/6 |
 | status | 12/12 |
 | dom-smoke | 66/66 |
-| prompt-cache | 9/9 |
+| prompt-cache | 10/10 |
 | l1-context | 7/7 |
 | meme-chat | 20/20 |
-| meme-strategy | 20/20 |
+| meme-strategy | 27/27 |
 | usage-breakdown | 6/6 |
 | meme-test | 31/31 |
 | push | 6/6 |
@@ -825,6 +826,8 @@ node tools\weather-test.mjs
 3. V4 是否包含可选“手”（文件/视觉操作电脑），还是只做多 AI？
 4. 登录限流保持 20 次/10 分钟，还是更严格？
 5. README 上传时，是否同时把 D14 的 ¥2 修正一起提交？
+
+
 
 
 

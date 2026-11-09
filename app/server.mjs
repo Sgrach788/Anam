@@ -1,9 +1,9 @@
-﻿import http from 'node:http';
+import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { MAX_PART, findSentenceCut, findCommaCut, partDelay, sanitizeReply, normalizeReplySpeed, replySpeedMultiplier } from './lib/reply.mjs';
+import { MAX_PART, findSentenceCut, findCommaCut, partDelay, sanitizeReply, normalizeReplySpeed, replySpeedMultiplier, createHtmlStreamFilter } from './lib/reply.mjs';
 import { extractFacts, shouldUseSemanticMemory } from './lib/memory.mjs';
 import { cleanSelfPost, cleanSignature, parseAssistantMetadata, retrieveMemories, smoothEmotion, validateSummaryClaims, validateSummaryRelations } from './lib/v1.mjs';
 import { buildStableSystemPrefix, buildSystemContent } from './lib/prompt.mjs';
@@ -17,7 +17,7 @@ import {
   MEME_MAX_BYTES, MEME_MAX_COUNT, MEME_STATIC_EDGE, AI_EMOTIONS,
   isSafeMemeId, newMemeId, sanitizeLabel, sanitizeTags,
   sniffMime, imageDimensions, sha256, memeRef, mediaRefId, selectCatalog, memePromptBlock,
-  memeStrategyFromConfig, memeStrategyPatch, rollMemeGate,
+  memeStrategyFromConfig, memeStrategyPatch, rollMemeGate, memeNoMemeStreak,
 } from './lib/memes.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -468,7 +468,7 @@ function buildMemeCatalogSnapshot() {
     gated: false,
     selected,
     byId: new Map(selected.map((record) => [record.id, record])),
-    prompt: memePromptBlock(selected, { softFrequency: strategy.softFrequency }),
+    prompt: memePromptBlock(selected, { softFrequency: strategy.softFrequency, streak: memeNoMemeStreak(messages) }),
     strategy,
     dice,
   };
@@ -1553,7 +1553,10 @@ function mockReply(text, memeId = '') {
   const block = `<anam-meta>${JSON.stringify(meta)}</anam-meta>`;
   // 仅测试用：验证"文字为空但表情有效"的回复。
   if (process.env.MOCK_MEME_ONLY === '1' && wantsMeme && meme) return block;
-  return `我听到你说「${text}」。这是模拟回复，链路已经通了 —— 接上真模型后这里就换成它自己说的话。\n${block}`;
+  const mockHtml = process.env.MOCK_HTML_TAG === '1'
+    ? ' 看这个 <img src="https://p3-sign.douyinpic.com/abc?x-expires=1&width=1080"> 好看吧'
+    : '';
+  return `我听到你说「${text}」。这是模拟回复，链路已经通了 —— 接上真模型后这里就换成它自己说的话。${mockHtml}\n${block}`;
 }
 
 // ---------- HTTP ----------
@@ -1705,6 +1708,7 @@ async function streamReply(res, userMsg, tokensIn) {
 
   let buf = '';
   let metadataStarted = false;
+  const filterHtmlChunk = createHtmlStreamFilter();
   const saved = [];
   let lastLen = 0;
   let firstPart = true;
@@ -1738,6 +1742,7 @@ async function streamReply(res, userMsg, tokensIn) {
       }
       return;
     }
+    if (!metadataStarted) chunk = filterHtmlChunk(chunk);
     buf += chunk;
     const markerAt = buf.indexOf('<anam-meta>');
     if (markerAt >= 0) {
@@ -3416,6 +3421,9 @@ setInterval(() => { void refreshWeather(); }, 60 * 60 * 1000).unref();
 server.listen(PORT, HOST, () => {
   console.log(`[companion] http://${HOST}:${PORT}  mode=${isMockMode() ? 'mock' : 'live'}  schema=v${SCHEMA}  history=${messages.length}  data=${DATA}  auth=${loadConfig().accessPassword ? 'on' : 'off'}`);
 });
+
+
+
 
 
 

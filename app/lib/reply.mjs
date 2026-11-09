@@ -53,11 +53,46 @@ const LEADING_TIME_RE = /^(?:今天|昨天|前天)\s*\d{1,2}:\d{2}\s*[：:，,�
 // 表情只能用 meta.meme 选择；模型若把历史里的 [表情] X 抄成独立句子，正文清掉。
 const STICKER_SENTENCE_RE = /(^|[。！？!?…\n])\s*[\[【]\s*表情\s*[\]】]\s*[^\n。！？!?…]{1,24}\s*[。！？!?…]?/gu;
 
+// 流式 HTML 过滤器：标签可能在任意 chunk 处被切断，必须跨 chunk 持有。
+// 只处理已知 HTML 标签；<anam-meta> 会原样通过。
+const HTML_TAGS = ['img', 'a', 'div', 'span', 'p', 'br', 'hr', 'b', 'i', 'strong', 'em', 'u', 's', 'small', 'big', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'video', 'audio', 'source', 'iframe', 'script', 'style'];
+const HTML_TAG_NAME = new RegExp(`^(?:${HTML_TAGS.join('|')})\\b`, 'iu');
+export function createHtmlStreamFilter() {
+  let pending = '';
+  return (chunk) => {
+    let text = pending + String(chunk || '');
+    pending = '';
+    let out = '';
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] !== '<') { out += text[i]; continue; }
+      const rest = text.slice(i);
+      const name = /^<\/?([a-z][a-z0-9-]*)\b/iu.exec(rest);
+      if (!name || !HTML_TAG_NAME.test(name[1])) {
+        // chunk 正好断在 "<"、"</" 或 "<im" 这类标签名前缀时，先持有到下一块。
+        const partial = /^<\/?([a-z][a-z0-9-]*)?$/u.exec(rest);
+        if (partial && (!partial[1] || HTML_TAGS.some((tag) => tag.startsWith(partial[1])))) {
+          pending = rest;
+          break;
+        }
+        out += '<';
+        continue;
+      }
+      const end = text.indexOf('>', i);
+      if (end < 0) { pending = rest; break; }
+      i = end;
+    }
+    return out;
+  };
+}
+
 export function sanitizeReply(text) {
   return String(text || '')
     // 模型偶尔会把空占位 HTML 当正文吐出来；空 <p> 不能变成可见气泡。
     .replace(/<p\b[^>]*>\s*(?:&nbsp;)?\s*<\/p>/giu, '')
     .replace(/<p\b[^>]*>([\s\S]*?)<\/p>/giu, '$1')
+    // 其他 HTML：空标签整个删，有内文的标签只留内文；未闭合的标签尾部也删。
+    .replace(/<[^>]*>/gu, '')
+    .replace(/<\/?[a-z][^>]*$/giu, '')
     .replace(TIME_LABEL_RE, '')
     .replace(BARE_TIME_LABEL_RE, '')
     .replace(LEADING_BARE_TIME_RE, '')

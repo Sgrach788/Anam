@@ -492,6 +492,8 @@ function cleanBubbleText(text) {
   return String(text || '')
     .replace(/<p\b[^>]*>\s*(?:&nbsp;)?\s*<\/p>/giu, '')
     .replace(/<p\b[^>]*>([\s\S]*?)<\/p>/giu, '$1')
+    .replace(/<[^>]*>/gu, '')
+    .replace(/<\/?[a-z][^>]*$/giu, '')
     .trim();
 }
 
@@ -3400,6 +3402,7 @@ window.addEventListener('unhandledrejection', (e) => {
 
 // 有口令就带着它问；没有的话 boot() 会收到 401 并弹口令框
 boot();
+
 
 
 

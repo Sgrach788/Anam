@@ -1,6 +1,6 @@
 // 纯函数测试：切句 + 时间标签清理。
 // 用法：node app/tools/reply-test.mjs
-import { MAX_PART, findSentenceCut, findCommaCut, partDelay, sanitizeReply, normalizeReplySpeed, replySpeedMultiplier } from '../lib/reply.mjs';
+import { MAX_PART, findSentenceCut, findCommaCut, partDelay, sanitizeReply, normalizeReplySpeed, replySpeedMultiplier, createHtmlStreamFilter } from '../lib/reply.mjs';
 
 const checks = [];
 const check = (name, ok, detail = '') => checks.push({ name, ok: Boolean(ok), detail });
@@ -11,6 +11,15 @@ check('去掉「今天 19:12：」前缀', sanitizeReply('今天 19:12：在的�
 check('只有标签时变空', sanitizeReply('[昨天 22:13]') === '');
 check('空占位 <p class="empty"> 不进入正文', sanitizeReply('<p class="empty"></p>') === '');
 check('带文字 <p> 只留文字', sanitizeReply('<p class="empty">你好。</p>') === '你好。');
+check('img 标签整个消失', sanitizeReply('看这个 <img src="https://x.test/a.png"> 好看吧') === '看这个  好看吧');
+check('a/div 只留内文', sanitizeReply('<a href="https://x">文字</a><div>第二段</div>') === '文字第二段');
+check('只有 HTML 时为空', sanitizeReply('<img src="https://x.test/a.png">') === '');
+const htmlFilter = createHtmlStreamFilter();
+const filtered = htmlFilter('<img src="https://p3-sign.douyinpic.com/abc?') + htmlFilter('x-expires=1&width=1080">今晚照片');
+check('跨 chunk 的 img 标签不泄漏碎片', filtered === '今晚照片' && !filtered.includes('douyinpic') && !filtered.includes('width='), filtered);
+const htmlFilterEdge = createHtmlStreamFilter();
+const filteredEdge = htmlFilterEdge('<') + htmlFilterEdge('img src="https://p3-sign.douyinpic.com/abc"') + htmlFilterEdge('>干净文字');
+check('chunk 断在 < 也不泄漏', filteredEdge === '干净文字', filteredEdge);
 check('去掉 [10月28日 09:05]', sanitizeReply('[10月28日 09:05] 早。') === '早。');
 check('去掉裸 [21:25]', sanitizeReply('[21:25] 好 来') === '好 来', sanitizeReply('[21:25] 好 来'));
 check('去掉句中裸 [21:25]', sanitizeReply('这样能看清吗[21:25]') === '这样能看清吗', sanitizeReply('这样能看清吗[21:25]'));

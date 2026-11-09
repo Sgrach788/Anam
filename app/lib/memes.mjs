@@ -69,8 +69,13 @@ export function rollMemeGate(probability, dice) {
   return Number.isFinite(roll) && roll >= 0 && roll <= 1 ? roll * 100 < chance : false;
 }
 
-export function memeSoftFrequencyBlock(enabled) {
+export function memeSoftFrequencyBlock(enabled, streak = 0) {
   if (!enabled) return '';
+  const fact = Number(streak) >= 4
+    ? `服务端事实：你已经连续 ${Number(streak)} 条助手回复没有配图，本条必须配 1 张。`
+    : Number(streak) >= 2
+      ? `服务端事实：你已经连续 ${Number(streak)} 条助手回复没有配图，优先配 1 张。`
+      : '';
   return [
     '【表情使用频率】',
     '参考每约 2–3 条助手回复有 1 条配图；按完整回复计算，不必精确计数，也不必固定在第 3 条。',
@@ -78,13 +83,35 @@ export function memeSoftFrequencyBlock(enabled) {
     '遇到玩笑、鼓励、庆祝、共情或轻松接话，有贴切的表情就可以配图。',
     '没有合适表情时不要为凑比例勉强发送。',
     '连续 4 条助手回复都没有配图时，本条必须配 1 张：从目录里选最贴切的一张，哪怕只是大致贴切；本条不受“没有合适表情时不要为凑比例勉强发送”的约束。',
+    fact,
     '用户明确要求时不受软频率参考约束。',
     '不要向用户解释频率判断。',
     '【输出示例，只学形式，不要照抄】',
     '纯文字：先接住对方的话，正常回答，不附加表情。',
     '文字+表情：回答后，在 <anam-meta> 里加 {"meme":"目录里的具体id"}；正文不要写表情 id 或分类。',
     '只发表情：正文可以很短，仍用 <anam-meta> 的 meme 字段发送；不要编造 id，没合适的就不发。',
-  ].join('\n');
+  ].filter(Boolean).join('\n');
+}
+
+export function memeNoMemeStreak(rows = []) {
+  const groups = [];
+  const seen = new Set();
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const message = rows[i];
+    if (message?.role !== 'assistant') continue;
+    const key = message.replyTo || message.id;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const group = rows.filter((row) => row.role === 'assistant' && (row.replyTo || row.id) === key);
+    groups.push(group);
+    if (group.some((row) => row.type === 'sticker')) break;
+  }
+  let streak = 0;
+  for (const group of groups) {
+    if (group.some((row) => row.type === 'sticker')) break;
+    streak++;
+  }
+  return streak;
 }
 
 // 12 个 URL 安全字符；与 UUID 区分，但同样全局唯一、永不复用。
@@ -239,7 +266,7 @@ export function catalogLine(record) {
 }
 
 // 只注入稳定前缀之后；空目录/总开关关闭时调用方不传，整块零 token。
-export function memePromptBlock(selected, { softFrequency = false } = {}) {
+export function memePromptBlock(selected, { softFrequency = false, streak = 0 } = {}) {
   const rows = (selected || [])
     .filter((record) => record?.id && record.label)
     .map(catalogLine)
@@ -249,7 +276,7 @@ export function memePromptBlock(selected, { softFrequency = false } = {}) {
     '【可用表情包】',
     '只在语境合适时选一张；每条回复最多一张；不必刻意使用。',
     '选择方式：在 <anam-meta> 里加 "meme":"表情id"；不要编造 id，没合适的就留空字符串。',
-    memeSoftFrequencyBlock(softFrequency),
+    memeSoftFrequencyBlock(softFrequency, streak),
     ...rows.map((line) => `- ${line}`),
   ].filter(Boolean).join('\n');
 }

@@ -1311,4 +1311,11 @@
 - 真实单张测试：`记下怪话` 草稿为“围观群友怪话，一脸无语 / 无语、群聊”，`label/tags` 未变。
 - 版本 0.2.48 / SW `companion-v48-2026-11-09`。
 - 测试：meme-strategy 20/20、meme-test 31/31、reply 25/25、dom 66/66。
+## v49：HTML 标签修复 + 服务端 streak — 2026-11-09
+
+- 稳定前缀新增 HTML_BAN，禁止 `<img>/<a>/<div>/<span>` 与图片直链。
+- 流式过滤 `createHtmlStreamFilter`：跨 chunk 持有未闭合标签，空标签删、有内文留文；`sanitizeReply` 与前端 `cleanBubbleText` 双层兜底。
+- mock 集成：含长 `<img>` 的回复在 SSE/历史中均无 `<img`、`douyinpic.com`、`width=` 碎片，只剩干净正文。
+- 服务端 streak：`memeNoMemeStreak` 按 replyTo 分组，streak≥2 注入“服务端事实…优先”，≥4 注入“必须”；v48 强制行保留。
+- 测试：reply 30/30、meme-strategy 27/27、prompt-cache 10/10、meme-test 31/31、dom 66/66。
 

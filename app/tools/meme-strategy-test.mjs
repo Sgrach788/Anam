@@ -2,7 +2,7 @@
 // 用法：node app/tools/meme-strategy-test.mjs
 import {
   MEME_STRATEGY_DEFAULTS, memeStrategyFromConfig, memeStrategyPatch,
-  rollMemeGate, memeSoftFrequencyBlock, memePromptBlock,
+  rollMemeGate, memeSoftFrequencyBlock, memePromptBlock, memeNoMemeStreak,
 } from '../lib/memes.mjs';
 
 const checks = [];
@@ -39,6 +39,17 @@ check('软提示包含三种输出教学', soft.includes('纯文字：') && soft
 check('软提示关闭为空', memeSoftFrequencyBlock(false) === '');
 check('目录开启软提示时注入', memePromptBlock([{ id: 'abc12345', label: '开心', tags: [] }], { softFrequency: true }).includes('用户明确要求时不受软频率参考约束'));
 
+const round = (key, sticker = false, parts = 2) => Array.from({ length: parts }, () => ({ role: 'assistant', replyTo: key, type: sticker ? 'sticker' : 'text' }));
+check('streak：最近 3 轮没带、第 4 轮带了 = 3', memeNoMemeStreak([...round('old', true), ...round('a'), ...round('b'), ...round('c')]) === 3);
+check('streak：最近 1 轮带了 = 0', memeNoMemeStreak(round('a', true)) === 0);
+check('streak：同一轮 3 气泡没带 = 1', memeNoMemeStreak(round('a', false, 3)) === 1);
+check('streak：连续 5 轮没带 = 5', memeNoMemeStreak([...round('a'), ...round('b'), ...round('c'), ...round('d'), ...round('e')]) === 5);
+const injected4 = memePromptBlock([{ id: 'abc12345', label: '开心', tags: [] }], { softFrequency: true, streak: 4 });
+check('streak=4 注入“必须”且 N=4', injected4.includes('服务端事实：你已经连续 4 条助手回复没有配图，本条必须配 1 张。'));
+const injected2 = memePromptBlock([{ id: 'abc12345', label: '开心', tags: [] }], { softFrequency: true, streak: 2 });
+check('streak=2 注入“优先”且 N=2', injected2.includes('服务端事实：你已经连续 2 条助手回复没有配图，优先配 1 张。'));
+check('streak=1 不注入事实行', !memeSoftFrequencyBlock(true, 1).includes('服务端事实：'));
+
 let failed = 0;
 for (const c of checks) {
   console.log(`${c.ok ? 'PASS' : 'FAIL'}  ${c.name}${c.detail ? `  (${c.detail})` : ''}`);
@@ -46,6 +57,7 @@ for (const c of checks) {
 }
 console.log(`\n${checks.length - failed}/${checks.length} 通过`);
 process.exit(failed ? 1 : 0);
+
 
 
 
